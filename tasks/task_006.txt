@@ -1,0 +1,11 @@
+# Task ID: 6
+# Title: Create UI Component Library with Headless UI and Radix
+# Status: pending
+# Dependencies: 1
+# Priority: medium
+# Description: Build a reusable component library using Headless UI and Radix UI primitives styled with Tailwind CSS.
+# Details:
+Install Headless UI and Radix UI. Create base components: Button, Input, Select, Modal, Dropdown, Tabs, Toast notifications, Form elements. Implement consistent styling with Tailwind. Create compound components for common patterns. Document component props and usage examples.
+
+# Test Strategy:
+Create a storybook or test page to visually verify all components. Test accessibility compliance. Ensure responsive behavior works correctly.

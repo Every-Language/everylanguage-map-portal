@@ -1,0 +1,11 @@
+# Task ID: 10
+# Title: Integrate ffmpeg.wasm for Audio Metadata Extraction
+# Status: pending
+# Dependencies: 1, 9
+# Priority: medium
+# Description: Set up client-side audio processing to extract metadata from audio files.
+# Details:
+Install and configure ffmpeg.wasm. Create a service for extracting metadata from audio files. Implement functions to parse ID3 tags. Extract CHAPTER#START/END/NAME/ID format information. Convert timestamps to seconds. Handle errors and fallbacks for files without metadata.
+
+# Test Strategy:
+Test metadata extraction with various audio file formats. Verify timestamp conversion accuracy. Test error handling for files without metadata.

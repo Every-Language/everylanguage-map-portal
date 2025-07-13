@@ -1,0 +1,11 @@
+# Task ID: 18
+# Title: Implement CSV Text Upload
+# Status: pending
+# Dependencies: 5, 6, 17
+# Priority: medium
+# Description: Create a system for bulk verse text upload via CSV files.
+# Details:
+Build a CSV upload component. Implement CSV parsing with validation. Create a preview table showing parsed data. Add highlighting for unrecognized verses. Display statistics: total rows, valid verses, errors. Add edit functionality for corrections. Implement final validation and database insertion logic.
+
+# Test Strategy:
+Test CSV upload with various file formats. Verify that parsing errors are correctly identified. Test the preview and editing functionality. Verify that data is correctly saved to the database.

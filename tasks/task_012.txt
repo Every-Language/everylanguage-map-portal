@@ -1,0 +1,11 @@
+# Task ID: 12
+# Title: Build Upload Review Interface
+# Status: pending
+# Dependencies: 6, 9, 10, 11
+# Priority: high
+# Description: Create a table view for reviewing detected files before upload.
+# Details:
+Build a table component to display detected files. Show filename, detected book/chapter, verse range, duration, and status. Make book/chapter fields editable with dropdowns. Add validation warnings for missing data. Implement a 'Mark Verses' button for detailed timing. Create a batch upload button with confirmation.
+
+# Test Strategy:
+Test the table view with various file sets. Verify that editable fields work correctly. Test validation warnings for incomplete data. Verify that the 'Mark Verses' button opens the verse marking modal.

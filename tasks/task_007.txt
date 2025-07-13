@@ -1,0 +1,11 @@
+# Task ID: 7
+# Title: Implement Project Creation Flow
+# Status: pending
+# Dependencies: 3, 4, 5, 6
+# Priority: high
+# Description: Build the project creation interface with hierarchical language and region selection.
+# Details:
+Create a multi-step form for project creation. Implement hierarchical tree view for language_entities selection with collapsible parent-child relationships. Add search functionality for quick navigation. Build form with auto-populated fields (name, description, source language, region). Implement geolocation detection for location field. Set up validation and database insertion logic.
+
+# Test Strategy:
+Test the complete project creation flow. Verify that hierarchical selections work correctly. Test validation rules. Confirm that projects are correctly saved to the database.

@@ -1,0 +1,465 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Setup Project Repository and Base Configuration",
+      "description": "Initialize the React TypeScript project with Tailwind CSS, configure ESLint, and set up the basic project structure.",
+      "status": "done",
+      "dependencies": [],
+      "priority": "high",
+      "details": "Create a new React project using create-react-app with TypeScript template. Configure Tailwind CSS following their documentation. Set up ESLint with TypeScript rules. Create the basic folder structure: components/, hooks/, pages/, utils/, types/, services/, assets/. Initialize Git repository and create the initial commit.",
+      "testStrategy": "Verify that the project builds without errors. Ensure Tailwind CSS is working by testing a simple styled component.",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Initialize React TypeScript Project with Vite",
+          "description": "Set up a new React TypeScript project using Vite for faster development and optimized builds, and install core dependencies.",
+          "dependencies": [],
+          "details": "1. Create a new project using Vite with React TypeScript template: `npm create vite@latest my-app --template react-ts`\n2. Navigate to project directory: `cd my-app`\n3. Install core dependencies: `npm install react@latest react-dom@latest react-router-dom@6`\n4. Install TypeScript type definitions: `npm install -D @types/react @types/react-dom`\n5. Initialize Git repository: `git init`\n6. Create .gitignore file with node_modules, dist, and other build artifacts\n7. Make initial commit: `git add . && git commit -m \"Initial project setup\"`\n8. Test the setup by running `npm run dev` to ensure the development server starts correctly",
+          "status": "done",
+          "parentTaskId": 1
+        },
+        {
+          "id": 2,
+          "title": "Configure Tailwind CSS and Base Styling",
+          "description": "Install and configure Tailwind CSS with PostCSS for utility-first styling approach, and set up the base styling for the project.",
+          "dependencies": [
+            1
+          ],
+          "details": "1. Install Tailwind CSS and its dependencies: `npm install -D tailwindcss postcss autoprefixer`\n2. Initialize Tailwind configuration: `npx tailwindcss init -p`\n3. Configure content paths in tailwind.config.js to scan source files:\n```js\nexport default {\n  content: [\"./index.html\", \"./src/**/*.{js,ts,jsx,tsx}\"],\n  theme: {\n    extend: {},\n  },\n  plugins: [],\n}\n```\n4. Add Tailwind directives to src/index.css:\n```css\n@tailwind base;\n@tailwind components;\n@tailwind utilities;\n```\n5. Ensure the CSS is imported in src/main.tsx\n6. Create a simple component to test Tailwind classes\n7. Test the setup by adding Tailwind classes to existing components and verifying they apply correctly",
+          "status": "done",
+          "parentTaskId": 1
+        },
+        {
+          "id": 3,
+          "title": "Set Up ESLint and Prettier for Code Quality",
+          "description": "Configure ESLint with TypeScript rules and Prettier for consistent code formatting and quality enforcement.",
+          "dependencies": [
+            1
+          ],
+          "details": "1. Install ESLint, Prettier, and related plugins: `npm install -D eslint prettier eslint-config-prettier eslint-plugin-react eslint-plugin-react-hooks @typescript-eslint/eslint-plugin @typescript-eslint/parser`\n2. Create .eslintrc.cjs file with recommended settings:\n```js\nmodule.exports = {\n  parser: '@typescript-eslint/parser',\n  extends: [\n    'eslint:recommended',\n    'plugin:react/recommended',\n    'plugin:@typescript-eslint/recommended',\n    'prettier'\n  ],\n  plugins: ['react', '@typescript-eslint', 'react-hooks'],\n  rules: {\n    'react/react-in-jsx-scope': 'off',\n    'react/prop-types': 'off'\n  },\n  settings: {\n    react: {\n      version: 'detect'\n    }\n  }\n};\n```\n3. Create .prettierrc file for formatting consistency:\n```json\n{\n  \"singleQuote\": true,\n  \"semi\": true,\n  \"trailingComma\": \"all\",\n  \"tabWidth\": 2\n}\n```\n4. Add lint and format scripts to package.json:\n```json\n\"scripts\": {\n  \"lint\": \"eslint . --ext .ts,.tsx\",\n  \"format\": \"prettier --write .\"\n}\n```\n5. Test the setup by running `npm run lint` and `npm run format` to ensure they work correctly",
+          "status": "done",
+          "parentTaskId": 1
+        },
+        {
+          "id": 4,
+          "title": "Create Project Folder Structure",
+          "description": "Establish a scalable and maintainable folder structure following best practices for React TypeScript applications.",
+          "dependencies": [
+            1
+          ],
+          "details": "1. Create the following directory structure in the src folder:\n   - components/ (for reusable UI components)\n   - pages/ (for route-level components)\n   - hooks/ (for custom React hooks)\n   - utils/ (for utility functions)\n   - types/ (for TypeScript type definitions)\n   - services/ (for API calls and external services)\n   - assets/ (for images, fonts, etc.)\n2. Create index.ts files in each directory to facilitate clean imports\n3. Add placeholder files or basic implementations in each folder:\n   - components/Button.tsx (a simple button component)\n   - pages/Home.tsx (a basic home page)\n   - hooks/useWindowSize.ts (a window size hook)\n   - utils/formatters.ts (date/string formatters)\n4. Update App.tsx to use the new folder structure\n5. Test the imports and component rendering to ensure the structure works correctly",
+          "status": "done",
+          "parentTaskId": 1
+        },
+        {
+          "id": 5,
+          "title": "Configure Build and Development Environment",
+          "description": "Set up scripts, environment variables, and development tools to streamline the development workflow.",
+          "dependencies": [
+            1,
+            2,
+            3
+          ],
+          "details": "1. Create environment variable files:\n   - .env (for shared variables)\n   - .env.development (for development-specific variables)\n   - .env.production (for production-specific variables)\n2. Add environment variable prefix VITE_ to ensure they're exposed to the client\n3. Update package.json scripts for development, building, and testing:\n```json\n\"scripts\": {\n  \"dev\": \"vite\",\n  \"build\": \"tsc && vite build\",\n  \"preview\": \"vite preview\",\n  \"lint\": \"eslint . --ext .ts,.tsx\",\n  \"format\": \"prettier --write .\",\n  \"test\": \"vitest run\"\n}\n```\n4. Install development tools for testing (optional): `npm install -D vitest jsdom @testing-library/react @testing-library/jest-dom`\n5. Configure vite.config.ts with plugins and build options:\n```ts\nimport { defineConfig } from 'vite'\nimport react from '@vitejs/plugin-react'\n\nexport default defineConfig({\n  plugins: [react()],\n  resolve: {\n    alias: {\n      '@': '/src'\n    }\n  }\n})\n```\n6. Create a tsconfig.paths.json file for path aliases (optional)\n7. Test the build process by running `npm run build` and `npm run preview` to ensure everything works correctly",
+          "status": "done",
+          "parentTaskId": 1
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Integrate Supabase Authentication",
+      "description": "Set up Supabase client and implement authentication flows including login, registration, and session management.",
+      "status": "pending",
+      "dependencies": [
+        1
+      ],
+      "priority": "high",
+      "details": "Install Supabase JS client. Create authentication service with login, logout, register, and password reset functions. Implement persistent session storage. Create login and registration forms with validation. Set up protected routes using React Router. Implement role-based access control using Supabase RLS policies.",
+      "testStrategy": "Test user registration, login, logout, and session persistence. Verify that protected routes redirect unauthenticated users to login page.",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Set up Supabase client and environment configuration",
+          "description": "Initialize the Supabase client with proper environment variables and create a centralized configuration file for authentication services.",
+          "dependencies": [],
+          "details": "1. Install required dependencies: `npm install @supabase/supabase-js`\n2. Create environment variables in `.env` file for Supabase URL and anon key (use appropriate prefix like REACT_APP_ or NEXT_PUBLIC_ depending on your framework)\n3. Create a `supabaseClient.js` file that initializes the Supabase client using environment variables\n4. Add proper error handling for initialization failures\n5. Set up CORS configuration in Supabase dashboard to whitelist your frontend domain\n6. Test the connection by making a simple query\n7. Document the setup process for other developers\n\nTesting approach: Verify client initialization works without errors and can make a basic public query to Supabase.",
+          "status": "done",
+          "parentTaskId": 2
+        },
+        {
+          "id": 2,
+          "title": "Implement authentication service with core functions",
+          "description": "Create a dedicated authentication service that handles login, registration, logout, and password reset functionality using the Supabase client.",
+          "dependencies": [
+            1
+          ],
+          "details": "1. Create an `authService.js` file that imports the Supabase client\n2. Implement the following functions with proper error handling:\n   - `signUp(email, password)` - User registration\n   - `signIn(email, password)` - User login with credentials\n   - `signInWithProvider(provider)` - OAuth login (if needed)\n   - `signOut()` - User logout\n   - `resetPassword(email)` - Password reset request\n   - `updatePassword(password)` - Update password after reset\n3. Add appropriate validation for inputs\n4. Include comprehensive error handling with user-friendly error messages\n5. Add logging for authentication events (for debugging)\n\nTesting approach: Create unit tests for each authentication function using a testing framework like Jest, mocking the Supabase responses. Test both success and error scenarios.",
+          "status": "done",
+          "parentTaskId": 2
+        },
+        {
+          "id": 3,
+          "title": "Create authentication context and session management",
+          "description": "Implement a global authentication context using React Context API to manage user session state throughout the application.",
+          "dependencies": [
+            2
+          ],
+          "details": "1. Create an `AuthContext.js` file with React Context API\n2. Implement an AuthProvider component that:\n   - Maintains current user state\n   - Listens to auth state changes using `supabase.auth.onAuthStateChange`\n   - Provides methods to access the current user and authentication status\n   - Handles session persistence across page refreshes\n3. Create a custom hook `useAuth()` to easily access auth context\n4. Implement session retrieval on initial load using `supabase.auth.getSession()`\n5. Add proper cleanup for auth listeners when components unmount\n6. Handle token refresh logic to maintain long-lived sessions\n\nTesting approach: Test the AuthProvider with React Testing Library to ensure it correctly updates state on auth events and provides the expected context values.",
+          "status": "done",
+          "parentTaskId": 2
+        },
+        {
+          "id": 4,
+          "title": "Build login and registration forms with validation",
+          "description": "Create user-friendly login and registration forms with proper validation, error handling, and user feedback.",
+          "dependencies": [
+            3
+          ],
+          "details": "1. Create reusable form components for:\n   - Login form with email/password fields\n   - Registration form with necessary fields\n   - Password reset request form\n   - Password update form\n2. Implement form validation using a library like Formik or React Hook Form\n3. Add validation rules for:\n   - Email format\n   - Password strength (min length, complexity)\n   - Required fields\n4. Connect forms to the authentication service methods\n5. Implement proper loading states during authentication\n6. Display user-friendly error messages from Supabase\n7. Add success feedback and redirects after successful operations\n\nTesting approach: Test form validation logic, submission handling, and UI state changes during authentication processes using component testing.",
+          "status": "in-progress",
+          "parentTaskId": 2
+        },
+        {
+          "id": 5,
+          "title": "Implement protected routes and role-based access control",
+          "description": "Set up route protection using React Router and implement role-based access control using Supabase Row Level Security (RLS) policies.",
+          "dependencies": [
+            3,
+            4
+          ],
+          "details": "1. Create a `ProtectedRoute` component that:\n   - Checks for authenticated user using the auth context\n   - Redirects to login page if user is not authenticated\n   - Optionally checks for specific user roles\n2. Implement route configuration using React Router with protected routes\n3. Set up Supabase RLS policies for your database tables:\n   - Enable RLS on all sensitive tables\n   - Create policies that restrict access based on user authentication\n   - Add role-specific policies for different access levels\n4. Test RLS policies to ensure they correctly restrict unauthorized access\n5. Create helper functions to check user permissions in the UI\n6. Implement UI elements that conditionally render based on user roles\n\nTesting approach: Test protected routes by simulating authenticated and unauthenticated states. Verify RLS policies by attempting to access data with different user roles and ensuring proper restrictions are in place.",
+          "status": "pending",
+          "parentTaskId": 2
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Setup State Management with Zustand",
+      "description": "Implement Zustand stores for global state management across the application.",
+      "status": "pending",
+      "dependencies": [
+        1
+      ],
+      "priority": "high",
+      "details": "Install Zustand. Create separate stores for authentication, project management, upload state, and UI state. Implement selectors for efficient state access. Set up middleware for persistence where needed. Create typed interfaces for all store states.",
+      "testStrategy": "Write unit tests for store actions and selectors. Verify state persistence across page refreshes where applicable."
+    },
+    {
+      "id": 4,
+      "title": "Configure TanStack Query for API Integration",
+      "description": "Set up TanStack Query for data fetching, caching, and state synchronization with the Supabase backend.",
+      "status": "pending",
+      "dependencies": [
+        1,
+        2
+      ],
+      "priority": "high",
+      "details": "Install TanStack Query. Create a query client provider. Set up base query hooks for Supabase tables. Implement custom hooks for common data operations. Configure global error handling and loading states. Set up optimistic updates for better UX.",
+      "testStrategy": "Test query caching behavior. Verify that stale data is properly refreshed. Test error handling for network failures."
+    },
+    {
+      "id": 5,
+      "title": "Implement Database Schema and Supabase Setup",
+      "description": "Set up the Supabase database with all required tables according to the schema specification.",
+      "status": "pending",
+      "dependencies": [
+        2
+      ],
+      "priority": "high",
+      "details": "Create all tables in Supabase: projects, language_entities, regions, bible_versions, books, chapters, verses, media_files, media_files_verses, media_files_targets, text_versions, verse_texts. Set up foreign key relationships. Configure RLS policies for security. Create necessary indexes for performance. Set up real-time subscriptions for relevant tables.",
+      "testStrategy": "Verify all tables are created with correct columns and relationships. Test RLS policies to ensure proper access control. Test real-time subscription functionality."
+    },
+    {
+      "id": 6,
+      "title": "Create UI Component Library with Headless UI and Radix",
+      "description": "Build a reusable component library using Headless UI and Radix UI primitives styled with Tailwind CSS.",
+      "status": "pending",
+      "dependencies": [
+        1
+      ],
+      "priority": "medium",
+      "details": "Install Headless UI and Radix UI. Create base components: Button, Input, Select, Modal, Dropdown, Tabs, Toast notifications, Form elements. Implement consistent styling with Tailwind. Create compound components for common patterns. Document component props and usage examples.",
+      "testStrategy": "Create a storybook or test page to visually verify all components. Test accessibility compliance. Ensure responsive behavior works correctly."
+    },
+    {
+      "id": 7,
+      "title": "Implement Project Creation Flow",
+      "description": "Build the project creation interface with hierarchical language and region selection.",
+      "status": "pending",
+      "dependencies": [
+        3,
+        4,
+        5,
+        6
+      ],
+      "priority": "high",
+      "details": "Create a multi-step form for project creation. Implement hierarchical tree view for language_entities selection with collapsible parent-child relationships. Add search functionality for quick navigation. Build form with auto-populated fields (name, description, source language, region). Implement geolocation detection for location field. Set up validation and database insertion logic.",
+      "testStrategy": "Test the complete project creation flow. Verify that hierarchical selections work correctly. Test validation rules. Confirm that projects are correctly saved to the database."
+    },
+    {
+      "id": 8,
+      "title": "Develop Project Dashboard",
+      "description": "Create the main project dashboard with Bible book list and chapter status indicators.",
+      "status": "pending",
+      "dependencies": [
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "priority": "high",
+      "details": "Build the project dashboard layout. Implement expandable/collapsible book entries. Create status indicators for chapters (green, orange, red). Display verse range per chapter. Calculate and show progress based on media_files coverage. Add action buttons for upload and edit functions. Implement real-time updates using Supabase subscriptions.",
+      "testStrategy": "Test expanding/collapsing book entries. Verify that status indicators correctly reflect upload status. Test that progress calculations are accurate. Verify real-time updates when data changes."
+    },
+    {
+      "id": 9,
+      "title": "Implement File Upload Interface",
+      "description": "Create a drag-and-drop interface for multi-file audio uploads with preview.",
+      "status": "pending",
+      "dependencies": [
+        3,
+        4,
+        6
+      ],
+      "priority": "high",
+      "details": "Build a drag-and-drop zone supporting multiple files. Implement file type validation for audio formats (mp3, m4a, wav). Add file size and format checks. Create a file preview list with basic metadata. Implement file removal functionality. Add fallback for browsers without drag-and-drop support.",
+      "testStrategy": "Test drag-and-drop functionality with various file types. Verify that invalid files are rejected with appropriate error messages. Test the file preview and removal functionality."
+    },
+    {
+      "id": 10,
+      "title": "Integrate ffmpeg.wasm for Audio Metadata Extraction",
+      "description": "Set up client-side audio processing to extract metadata from audio files.",
+      "status": "pending",
+      "dependencies": [
+        1,
+        9
+      ],
+      "priority": "medium",
+      "details": "Install and configure ffmpeg.wasm. Create a service for extracting metadata from audio files. Implement functions to parse ID3 tags. Extract CHAPTER#START/END/NAME/ID format information. Convert timestamps to seconds. Handle errors and fallbacks for files without metadata.",
+      "testStrategy": "Test metadata extraction with various audio file formats. Verify timestamp conversion accuracy. Test error handling for files without metadata."
+    },
+    {
+      "id": 11,
+      "title": "Implement Filename Parsing Logic",
+      "description": "Create robust filename parsing to automatically detect book, chapter, and verse information.",
+      "status": "pending",
+      "dependencies": [
+        9
+      ],
+      "priority": "medium",
+      "details": "Implement RegEx patterns for common filename formats: Language_Book_Chapter###_V###_###.mp3, Language_Book_Chapter#.zip, etc. Create a service to extract book, chapter, and verse information from filenames. Handle edge cases and partial matches. Provide fallback UI for manual entry when automatic detection fails.",
+      "testStrategy": "Test parsing with various filename formats. Verify that edge cases are handled correctly. Test the fallback manual entry interface."
+    },
+    {
+      "id": 12,
+      "title": "Build Upload Review Interface",
+      "description": "Create a table view for reviewing detected files before upload.",
+      "status": "pending",
+      "dependencies": [
+        6,
+        9,
+        10,
+        11
+      ],
+      "priority": "high",
+      "details": "Build a table component to display detected files. Show filename, detected book/chapter, verse range, duration, and status. Make book/chapter fields editable with dropdowns. Add validation warnings for missing data. Implement a 'Mark Verses' button for detailed timing. Create a batch upload button with confirmation.",
+      "testStrategy": "Test the table view with various file sets. Verify that editable fields work correctly. Test validation warnings for incomplete data. Verify that the 'Mark Verses' button opens the verse marking modal."
+    },
+    {
+      "id": 13,
+      "title": "Implement Batch Upload with Progress Tracking",
+      "description": "Create a system for uploading multiple files with real-time progress tracking.",
+      "status": "pending",
+      "dependencies": [
+        3,
+        4,
+        5,
+        12
+      ],
+      "priority": "high",
+      "details": "Implement multipart upload for large files. Create a queue system for batch uploads. Add progress tracking per file and overall. Implement error handling and retry logic. Set up database insertion via Supabase. Update UI in real-time during upload. Add cancellation functionality.",
+      "testStrategy": "Test uploading multiple files simultaneously. Verify that progress is accurately reported. Test error handling by simulating network failures. Verify that database records are correctly created."
+    },
+    {
+      "id": 14,
+      "title": "Create Custom Audio Player Component",
+      "description": "Build a custom HTML5 audio player with precise timestamp controls for verse marking.",
+      "status": "pending",
+      "dependencies": [
+        6
+      ],
+      "priority": "medium",
+      "details": "Create a custom audio player using HTML5 Audio API. Implement controls: play/pause, skip ±5s, playback speed (0.5x-4x). Add current timestamp display. Implement keyboard shortcuts (spacebar, arrow keys). Style with Tailwind CSS for a consistent look. Make the player responsive for different screen sizes.",
+      "testStrategy": "Test all player controls. Verify that keyboard shortcuts work correctly. Test on different browsers and devices. Ensure the player is accessible."
+    },
+    {
+      "id": 15,
+      "title": "Implement Verse Marking Modal",
+      "description": "Create a modal interface for marking verse timestamps in audio files.",
+      "status": "pending",
+      "dependencies": [
+        6,
+        14
+      ],
+      "priority": "high",
+      "details": "Build a modal component for verse marking. Integrate the custom audio player. Create a chronologically ordered verse list with editable start times. Implement auto-reordering when times are edited. Add delete functionality for verse markers. Implement a 'Mark Verse' button that adds a verse at the current timestamp. Add validation against chapter.total_verses.",
+      "testStrategy": "Test adding, editing, and deleting verse markers. Verify that auto-reordering works correctly. Test validation against chapter verse counts. Ensure the modal is accessible."
+    },
+    {
+      "id": 16,
+      "title": "Develop Timeline Editor for Verse Segments",
+      "description": "Create a visual timeline representation of verse segments within the audio file.",
+      "status": "pending",
+      "dependencies": [
+        14,
+        15
+      ],
+      "priority": "medium",
+      "details": "Build a visual timeline component showing the audio waveform (if possible) or time segments. Display verse markers on the timeline. Allow clicking on the timeline to navigate to that position. Implement dragging verse markers to adjust timestamps. Ensure the timeline is synchronized with the audio player. Add visual indicators for verse coverage and gaps.",
+      "testStrategy": "Test timeline navigation by clicking. Verify that verse markers are correctly positioned. Test dragging markers to adjust timestamps. Ensure the timeline stays synchronized with the audio player."
+    },
+    {
+      "id": 17,
+      "title": "Implement Text Version Management",
+      "description": "Create interfaces for managing multiple text versions per project.",
+      "status": "pending",
+      "dependencies": [
+        3,
+        4,
+        5,
+        6,
+        8
+      ],
+      "priority": "medium",
+      "details": "Build a text version management interface. Create forms for adding new text versions with name and Bible version selection. Implement listing, editing, and deleting text versions. Add version comparison functionality. Create a default version selector. Integrate with the project dashboard.",
+      "testStrategy": "Test adding, editing, and deleting text versions. Verify that the default version selector works correctly. Test integration with the project dashboard."
+    },
+    {
+      "id": 18,
+      "title": "Implement CSV Text Upload",
+      "description": "Create a system for bulk verse text upload via CSV files.",
+      "status": "pending",
+      "dependencies": [
+        5,
+        6,
+        17
+      ],
+      "priority": "medium",
+      "details": "Build a CSV upload component. Implement CSV parsing with validation. Create a preview table showing parsed data. Add highlighting for unrecognized verses. Display statistics: total rows, valid verses, errors. Add edit functionality for corrections. Implement final validation and database insertion logic.",
+      "testStrategy": "Test CSV upload with various file formats. Verify that parsing errors are correctly identified. Test the preview and editing functionality. Verify that data is correctly saved to the database."
+    },
+    {
+      "id": 19,
+      "title": "Implement Verse Text-Audio Linking",
+      "description": "Create functionality to automatically associate verse texts with audio timings.",
+      "status": "pending",
+      "dependencies": [
+        15,
+        16,
+        18
+      ],
+      "priority": "medium",
+      "details": "Implement logic to link verse texts with audio verse markers. Create a UI for reviewing and adjusting these associations. Add validation to ensure all verses have text. Implement batch association for efficiency. Update database relationships in media_files_verses.verse_text_id.",
+      "testStrategy": "Test automatic association with various scenarios. Verify that manual adjustments work correctly. Test validation for complete coverage. Verify that database relationships are correctly updated."
+    },
+    {
+      "id": 20,
+      "title": "Create Supabase Edge Functions for API Endpoints",
+      "description": "Implement serverless functions for complex operations like file upload and metadata extraction.",
+      "status": "pending",
+      "dependencies": [
+        5,
+        13
+      ],
+      "priority": "high",
+      "details": "Create Supabase Edge Functions for: upload_audio, create_project, extract_metadata, bulk_text_upload. Implement proper error handling and validation. Set up authentication and authorization checks. Add logging for debugging. Create TypeScript interfaces for request/response types.",
+      "testStrategy": "Test each function with various input scenarios. Verify error handling for invalid inputs. Test authentication and authorization rules. Verify that functions perform their intended operations correctly."
+    },
+    {
+      "id": 21,
+      "title": "Implement Real-time Updates with Supabase Subscriptions",
+      "description": "Set up real-time data synchronization for collaborative features.",
+      "status": "pending",
+      "dependencies": [
+        4,
+        5,
+        8
+      ],
+      "priority": "medium",
+      "details": "Configure Supabase real-time subscriptions for relevant tables. Create custom hooks for subscription management. Implement UI updates based on subscription events. Handle subscription errors and reconnection. Optimize performance by limiting subscription scope.",
+      "testStrategy": "Test real-time updates by modifying data from another client. Verify that UI updates correctly in response to subscription events. Test error handling and reconnection logic."
+    },
+    {
+      "id": 22,
+      "title": "Implement Caching and Performance Optimizations",
+      "description": "Optimize application performance with caching strategies and lazy loading.",
+      "status": "pending",
+      "dependencies": [
+        4,
+        8,
+        13
+      ],
+      "priority": "low",
+      "details": "Implement aggressive caching for language/region hierarchies. Add pagination for large datasets. Optimize component rendering with React.memo and useMemo. Implement code splitting for large components. Add lazy loading for images and non-critical resources. Set up performance monitoring.",
+      "testStrategy": "Measure and compare load times before and after optimizations. Test pagination with large datasets. Verify that caching works correctly. Use React DevTools to identify and fix performance bottlenecks."
+    },
+    {
+      "id": 23,
+      "title": "Implement Error Handling and Validation",
+      "description": "Create comprehensive error handling and validation throughout the application.",
+      "status": "pending",
+      "dependencies": [
+        2,
+        3,
+        4,
+        13
+      ],
+      "priority": "medium",
+      "details": "Implement form validation using a library like Zod or Yup. Create error boundary components for React errors. Add global error handling for API requests. Implement user-friendly error messages and recovery options. Add validation for all user inputs. Create a toast notification system for errors and success messages.",
+      "testStrategy": "Test form validation with valid and invalid inputs. Verify that API errors are properly handled and displayed. Test error boundaries by intentionally causing errors. Ensure that error messages are user-friendly and actionable."
+    },
+    {
+      "id": 24,
+      "title": "Implement Responsive Design and Accessibility",
+      "description": "Ensure the application is responsive and meets WCAG 2.1 AA compliance.",
+      "status": "pending",
+      "dependencies": [
+        6,
+        8,
+        9,
+        12,
+        15
+      ],
+      "priority": "medium",
+      "details": "Implement responsive layouts using Tailwind CSS breakpoints. Add keyboard navigation for all interactive elements. Ensure proper contrast ratios for text. Add ARIA attributes for screen readers. Implement focus management for modals and dialogs. Test and fix tab order for logical navigation. Add skip links for keyboard users.",
+      "testStrategy": "Test on various screen sizes and devices. Use accessibility tools like axe or Lighthouse to identify issues. Test with keyboard-only navigation. Verify that screen readers can properly interpret the application."
+    },
+    {
+      "id": 25,
+      "title": "Configure Deployment to Vercel",
+      "description": "Set up continuous deployment to Vercel with environment configuration.",
+      "status": "pending",
+      "dependencies": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        20
+      ],
+      "priority": "low",
+      "details": "Create Vercel project and link to repository. Configure environment variables for different environments (development, staging, production). Set up build and deployment scripts. Configure custom domain if needed. Implement preview deployments for pull requests. Add monitoring and error tracking.",
+      "testStrategy": "Verify that the application builds and deploys successfully. Test environment-specific configuration. Verify that preview deployments work for pull requests. Test the application in the production environment."
+    }
+  ],
+  "metadata": {
+    "projectName": "Audio Upload Website",
+    "totalTasks": 25,
+    "sourceFile": "PRD.txt",
+    "generatedAt": "2023-11-15"
+  }
+}

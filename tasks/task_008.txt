@@ -1,0 +1,11 @@
+# Task ID: 8
+# Title: Develop Project Dashboard
+# Status: pending
+# Dependencies: 3, 4, 5, 6, 7
+# Priority: high
+# Description: Create the main project dashboard with Bible book list and chapter status indicators.
+# Details:
+Build the project dashboard layout. Implement expandable/collapsible book entries. Create status indicators for chapters (green, orange, red). Display verse range per chapter. Calculate and show progress based on media_files coverage. Add action buttons for upload and edit functions. Implement real-time updates using Supabase subscriptions.
+
+# Test Strategy:
+Test expanding/collapsing book entries. Verify that status indicators correctly reflect upload status. Test that progress calculations are accurate. Verify real-time updates when data changes.
