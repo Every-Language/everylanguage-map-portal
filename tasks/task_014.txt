@@ -1,11 +1,94 @@
 # Task ID: 14
 # Title: Create Custom Audio Player Component
-# Status: pending
+# Status: in-progress
 # Dependencies: 6
 # Priority: medium
 # Description: Build a custom HTML5 audio player with precise timestamp controls for verse marking.
 # Details:
-Create a custom audio player using HTML5 Audio API. Implement controls: play/pause, skip ±5s, playback speed (0.5x-4x). Add current timestamp display. Implement keyboard shortcuts (spacebar, arrow keys). Style with Tailwind CSS for a consistent look. Make the player responsive for different screen sizes.
+Create a custom audio player as a React functional component using HTML5 Audio API with useRef for DOM manipulation. Implement a compound component pattern for modularity with separate sub-components for controls, time display, and progress bar.
+
+Core features:
+- Controls: play/pause, skip ±5s, playback speed (0.5x-4x)
+- Time display: current time, total duration, clickable progress bar for seeking
+- Keyboard shortcuts: spacebar (play/pause), arrow keys (skip), +/- (volume)
+- Playback speed options: 0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x, 3x, 4x
+
+Technical implementation:
+- Use React hooks (useState, useEffect, useRef, useCallback) for state management
+- Implement event listeners for audio events (timeupdate, ended, loadedmetadata)
+- Add error handling for audio loading and playback issues
+- Ensure proper cleanup of event listeners on unmount
+- Support multiple audio formats with fallback handling
+
+File structure:
+- Create AudioPlayer component in src/shared/design-system/components/
+- Add AudioPlayer to design system exports
+- Create supporting types and interfaces
+- Add to component demo page for testing
+
+Style with Tailwind CSS for a consistent look. Make the player responsive for different screen sizes.
 
 # Test Strategy:
-Test all player controls. Verify that keyboard shortcuts work correctly. Test on different browsers and devices. Ensure the player is accessible.
+Unit tests for component rendering and state management. Integration tests for keyboard shortcuts and controls. Accessibility testing with screen readers and ARIA labels. Cross-browser compatibility testing. Responsive design testing on different screen sizes. Verify that all player controls function correctly.
+
+# Subtasks:
+## 14.1. Set up component structure and file organization [pending]
+### Dependencies: None
+### Description: Create the AudioPlayer component in the design system directory with proper file structure and exports.
+### Details:
+
+
+## 14.2. Implement core audio functionality with React hooks [pending]
+### Dependencies: None
+### Description: Set up useRef for audio element and implement basic state management for play/pause, time tracking, and event listeners.
+### Details:
+
+
+## 14.3. Create sub-components for controls, time display, and progress bar [pending]
+### Dependencies: None
+### Description: Build modular sub-components following the compound component pattern for better organization and reusability.
+### Details:
+
+
+## 14.4. Implement playback speed controls [pending]
+### Dependencies: None
+### Description: Add dropdown with multiple playback speed options (0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x, 3x, 4x).
+### Details:
+
+
+## 14.5. Add keyboard navigation and shortcuts [pending]
+### Dependencies: None
+### Description: Implement keyboard event handlers for spacebar (play/pause), arrow keys (skip), and +/- (volume control).
+### Details:
+
+
+## 14.6. Implement accessibility features [pending]
+### Dependencies: None
+### Description: Add ARIA labels, ensure keyboard support, and optimize for screen reader compatibility.
+### Details:
+
+
+## 14.7. Style component with Tailwind CSS [pending]
+### Dependencies: None
+### Description: Apply consistent styling using Tailwind CSS and ensure responsive design for different screen sizes.
+### Details:
+
+
+## 14.8. Write tests for the component [pending]
+### Dependencies: None
+### Description: Create unit tests for rendering and state management, integration tests for controls and keyboard shortcuts, and accessibility tests.
+### Details:
+
+
+## 14.9. Add error handling and format support [pending]
+### Dependencies: None
+### Description: Implement error handling for audio loading/playback issues and support for multiple audio formats with fallbacks.
+### Details:
+
+
+## 14.10. Add component to demo page [pending]
+### Dependencies: None
+### Description: Integrate the AudioPlayer component into the design system demo page for testing and documentation.
+### Details:
+
+

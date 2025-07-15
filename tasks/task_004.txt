@@ -1,6 +1,6 @@
 # Task ID: 4
 # Title: Configure TanStack Query for API Integration
-# Status: pending
+# Status: done
 # Dependencies: 1, 2
 # Priority: high
 # Description: Set up TanStack Query for data fetching, caching, and state synchronization with the Supabase backend.
@@ -9,3 +9,719 @@ Install TanStack Query. Create a query client provider. Set up base query hooks 
 
 # Test Strategy:
 Test query caching behavior. Verify that stale data is properly refreshed. Test error handling for network failures.
+
+# Subtasks:
+## 1. Install TanStack Query and Set Up Query Client Provider [done]
+### Dependencies: None
+### Description: Install TanStack Query packages and create a QueryClientProvider to wrap the application
+### Details:
+1. Install required packages: `npm install @tanstack/react-query @tanstack/react-query-devtools`
+2. Create a `src/lib/query-client.ts` file to configure the QueryClient with default options
+3. Configure default options including staleTime, cacheTime, and retry policies
+4. Create a QueryProvider component in `src/providers/QueryProvider.tsx` that wraps children with QueryClientProvider
+5. Add React Query DevTools in development mode
+6. Update the main application component to use the QueryProvider
+7. Test by confirming the React Query DevTools panel appears in development mode
+
+<info added on 2025-07-14T09:04:04.766Z>
+## Implementation Details
+
+### Query Client Configuration
+```typescript
+// src/lib/query-client.ts
+import { QueryClient } from '@tanstack/react-query';
+
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      cacheTime: 10 * 60 * 1000, // 10 minutes
+      retry: 3,
+      refetchOnWindowFocus: process.env.NODE_ENV === 'production',
+      useErrorBoundary: true,
+    },
+    mutations: {
+      retry: 1,
+      useErrorBoundary: true,
+    },
+  },
+});
+```
+
+### Query Keys Factory
+```typescript
+// src/lib/query-keys.ts
+export const queryKeys = {
+  users: {
+    all: ['users'] as const,
+    detail: (id: string) => [...queryKeys.users.all, id] as const,
+    preferences: (id: string) => [...queryKeys.users.detail(id), 'preferences'] as const,
+  },
+  projects: {
+    all: ['projects'] as const,
+    detail: (id: string) => [...queryKeys.projects.all, id] as const,
+  },
+  // Add other entity keys as needed
+};
+```
+
+### QueryProvider Implementation
+```typescript
+// src/providers/QueryProvider.tsx
+import { QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { queryClient } from '../lib/query-client';
+
+interface QueryProviderProps {
+  children: React.ReactNode;
+}
+
+export function QueryProvider({ children }: QueryProviderProps) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+      {process.env.NODE_ENV !== 'production' && <ReactQueryDevtools initialIsOpen={false} />}
+    </QueryClientProvider>
+  );
+}
+```
+
+### Main Application Integration
+```typescript
+// src/main.tsx
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import { QueryProvider } from './providers/QueryProvider';
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <QueryProvider>
+      <App />
+    </QueryProvider>
+  </React.StrictMode>
+);
+```
+</info added on 2025-07-14T09:04:04.766Z>
+
+## 2. Create Base Query Hooks for Supabase Tables [done]
+### Dependencies: 4.1
+### Description: Implement generic base query hooks that interface with Supabase tables
+### Details:
+1. Create a `src/hooks/query/base-hooks.ts` file
+2. Implement `useQuery` wrapper that handles Supabase specific response format
+3. Create `useFetchCollection` hook for fetching collections of data from Supabase tables
+4. Implement `useFetchById` hook for fetching single records by ID
+5. Add TypeScript generics to ensure type safety with different table schemas
+6. Implement proper error handling for Supabase errors
+7. Test hooks with simple queries to verify they correctly fetch and type data
+
+<info added on 2025-07-14T09:08:24.978Z>
+## Implementation Details
+
+### Base Hooks Implementation
+
+```typescript
+// src/hooks/query/base-hooks.ts
+import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase-client';
+import { PostgrestError } from '@supabase/supabase-js';
+
+export interface SupabaseError {
+  message: string;
+  code: string;
+  details?: string;
+  hint?: string;
+}
+
+export function transformError(error: PostgrestError): SupabaseError {
+  return {
+    message: error.message || 'An unknown error occurred',
+    code: error.code,
+    details: error.details,
+    hint: error.hint
+  };
+}
+
+export function useFetchCollection<T>(
+  tableName: string,
+  options?: {
+    filters?: Record<string, any>;
+    orderBy?: { column: string; ascending?: boolean };
+    limit?: number;
+    offset?: number;
+    queryOptions?: UseQueryOptions<T[], SupabaseError>;
+  }
+) {
+  const { filters, orderBy, limit, offset, queryOptions } = options || {};
+  
+  return useQuery<T[], SupabaseError>({
+    queryKey: ['collection', tableName, filters, orderBy, limit, offset],
+    queryFn: async () => {
+      let query = supabase.from(tableName).select('*');
+      
+      // Apply filters
+      if (filters) {
+        Object.entries(filters).forEach(([key, value]) => {
+          if (value !== undefined) {
+            query = query.eq(key, value);
+          }
+        });
+      }
+      
+      // Apply ordering
+      if (orderBy) {
+        query = query.order(orderBy.column, { ascending: orderBy.ascending ?? true });
+      }
+      
+      // Apply pagination
+      if (limit) {
+        query = query.limit(limit);
+      }
+      
+      if (offset) {
+        query = query.range(offset, offset + (limit || 10) - 1);
+      }
+      
+      const { data, error } = await query;
+      
+      if (error) {
+        throw transformError(error);
+      }
+      
+      return data as T[];
+    },
+    ...queryOptions
+  });
+}
+
+export function useFetchById<T>(
+  tableName: string,
+  id: string | number | undefined,
+  options?: {
+    queryOptions?: UseQueryOptions<T | null, SupabaseError>;
+  }
+) {
+  const { queryOptions } = options || {};
+  
+  return useQuery<T | null, SupabaseError>({
+    queryKey: ['item', tableName, id],
+    queryFn: async () => {
+      if (!id) return null;
+      
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) {
+        // Handle "not found" as a valid case returning null
+        if (error.code === 'PGRST116') {
+          return null;
+        }
+        throw transformError(error);
+      }
+      
+      return data as T;
+    },
+    enabled: !!id,
+    ...queryOptions
+  });
+}
+```
+
+### Example Usage Pattern
+
+```typescript
+// src/hooks/query/projects.ts
+import { useFetchCollection, useFetchById } from './base-hooks';
+import type { TableRow } from '@/types/database';
+
+export function useProjects() {
+  return useFetchCollection<TableRow<'projects'>>('projects');
+}
+
+export function useProject(id: string | undefined) {
+  return useFetchById<TableRow<'projects'>>('projects', id);
+}
+
+export function useProjectsByUser(userId: string | undefined) {
+  return useFetchCollection<TableRow<'projects'>>('projects', {
+    filters: { user_id: userId },
+    queryOptions: {
+      enabled: !!userId
+    }
+  });
+}
+```
+
+### Type Safety Considerations
+
+For proper type safety, create a `database.ts` type file:
+
+```typescript
+// src/types/database.ts
+import { Database } from '@/lib/database.types'; // Generated from Supabase CLI
+
+// Type-safe table row inference
+export type TableRow<T extends keyof Database['public']['Tables']> = 
+  Database['public']['Tables'][T]['Row'];
+
+// Type-safe table insert inference
+export type TableInsert<T extends keyof Database['public']['Tables']> = 
+  Database['public']['Tables'][T]['Insert'];
+
+// Type-safe table update inference
+export type TableUpdate<T extends keyof Database['public']['Tables']> = 
+  Database['public']['Tables'][T]['Update'];
+```
+
+This implementation provides a robust foundation for all data fetching operations with Supabase while maintaining type safety and consistent error handling.
+</info added on 2025-07-14T09:08:24.978Z>
+
+## 3. Implement Entity-Specific Query Hooks [done]
+### Dependencies: 4.2
+### Description: Create specialized query hooks for each entity/table in the application
+### Details:
+1. Create a directory structure for entity-specific hooks (e.g., `src/hooks/query/users.ts`, `src/hooks/query/products.ts`)
+2. For each main entity, implement specialized hooks that use the base hooks
+3. Add entity-specific query keys and caching strategies
+4. Implement filtering, sorting, and pagination parameters as needed
+5. Create select transformations to shape the data for frontend consumption
+6. Add proper TypeScript interfaces for each entity
+7. Test each entity hook with real data to ensure correct fetching and transformation
+
+<info added on 2025-07-14T09:11:42.838Z>
+## Implementation Details for Entity-Specific Query Hooks
+
+### Architecture Patterns
+- Implement a factory pattern for query hooks to reduce boilerplate code
+- Use discriminated union types for complex filtering parameters
+- Implement optimistic updates for mutation operations to improve UX
+
+### Entity-Specific Implementation Notes
+
+**Users Hook (`src/hooks/query/users.ts`)**:
+```typescript
+export const useUsers = (options?: UserQueryOptions) => {
+  return useBaseQuery<User[]>({
+    queryKey: ['users', options],
+    queryFn: () => api.users.getAll(options),
+    staleTime: 5 * 60 * 1000, // 5 minutes cache
+  });
+};
+
+export const useUserById = (userId: string | undefined) => {
+  return useBaseQuery<User>({
+    queryKey: ['users', userId],
+    queryFn: () => api.users.getById(userId!),
+    enabled: !!userId,
+    staleTime: 10 * 60 * 1000, // 10 minutes cache
+  });
+};
+```
+
+**Projects Hook (`src/hooks/query/projects.ts`)**:
+```typescript
+export const useProjects = (filters?: ProjectFilters) => {
+  return useBaseQuery<Project[]>({
+    queryKey: ['projects', filters],
+    queryFn: () => api.projects.getAll(filters),
+    select: (data) => sortProjects(data, filters?.sortBy || 'updatedAt'),
+  });
+};
+```
+
+### Advanced Caching Strategies
+- Implement query invalidation chains (e.g., invalidate user queries when permissions change)
+- Use dependent queries for related entities (e.g., load project details after project ID is available)
+- Implement background refetching for frequently updated entities
+
+### Performance Optimizations
+- Add pagination support with `useInfiniteQuery` for large datasets
+- Implement data normalization for entities with complex relationships
+- Use select transformations to minimize component re-renders
+
+### Error Handling
+- Add retry logic for network-sensitive queries
+- Implement custom error handling for specific entity error cases
+- Add logging for failed queries to aid debugging
+</info added on 2025-07-14T09:11:42.838Z>
+
+## 4. Implement Mutation Hooks for Data Operations [done]
+### Dependencies: 4.2
+### Description: Create hooks for creating, updating, and deleting data using TanStack Query mutations
+### Details:
+1. Create `src/hooks/query/mutations.ts` for base mutation hooks
+2. Implement `useCreate`, `useUpdate`, and `useDelete` base mutation hooks
+3. Add proper TypeScript typing for mutation inputs and responses
+4. Implement automatic cache invalidation for affected queries
+5. Create entity-specific mutation hooks that use the base hooks
+6. Add validation before mutations are executed
+7. Test each mutation hook to ensure it correctly modifies data and updates the cache
+
+<info added on 2025-07-14T09:15:09.522Z>
+## Technical Implementation Details
+
+### Base Mutation Hooks Architecture
+- Implemented with `useMutation` from TanStack Query v4, utilizing the new mutation API
+- Structured with a two-tier approach: generic base hooks and entity-specific implementations
+- Added optimistic update patterns with `onMutate`, `onError`, and `onSettled` callbacks
+
+### Cache Invalidation Strategy
+```typescript
+// Example implementation of automatic cache invalidation
+const useCreateRecord = <T extends TableName>(table: T) => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (data: InsertData<T>) => {
+      const { data: result, error } = await supabase
+        .from(table)
+        .insert(data)
+        .select();
+      
+      if (error) throw new ApiError(error.message, error.code);
+      return result as RowData<T>;
+    },
+    onSuccess: () => {
+      // Invalidate collection queries
+      queryClient.invalidateQueries({ queryKey: [table] });
+    }
+  });
+};
+```
+
+### Error Handling Implementation
+- Created custom `ApiError` class extending `Error` for consistent error handling
+- Added error transformation utilities to convert Supabase errors to user-friendly messages
+- Implemented error state management with `isError` and `error` properties
+
+### Validation Integration
+```typescript
+// Example of validation integration with zod
+const useCreateProjectWithValidation = () => {
+  const createBase = useCreateRecord('projects');
+  
+  return useMutation({
+    mutationFn: async (data: CreateProjectInput) => {
+      // Validate input data before sending to API
+      const validated = projectSchema.parse(data);
+      return createBase.mutationFn(validated);
+    },
+    onSuccess: createBase.onSuccess
+  });
+};
+```
+
+### Batch Mutation Support
+- Added support for batch operations with proper typing
+- Implemented transaction-like behavior for related entity updates
+- Created utility functions for handling dependent entity mutations
+
+### Testing Approach
+- Unit tests with mock Supabase client for isolation
+- Integration tests verifying cache invalidation behavior
+- Test fixtures for common mutation scenarios
+</info added on 2025-07-14T09:15:09.522Z>
+
+## 5. Configure Global Error Handling and Loading States [done]
+### Dependencies: 4.1, 4.2, 4.4
+### Description: Set up centralized error handling and loading state management for queries and mutations
+### Details:
+1. Create a `src/lib/query-error-handler.ts` utility for processing query errors
+2. Update QueryClient configuration with global error handlers
+3. Implement a custom hook `useQueryErrorHandler` to standardize error handling
+4. Create reusable loading components for different loading states
+5. Implement a global loading state tracker using Zustand
+6. Add integration between TanStack Query loading states and the global state
+7. Test error scenarios to ensure proper error messages are displayed
+8. Test loading states to ensure loading indicators appear appropriately
+
+<info added on 2025-07-14T09:18:46.448Z>
+## Implementation Details
+
+### Error Handling Implementation
+- **Error Type Classification**:
+  ```typescript
+  enum ErrorType {
+    NETWORK = 'network',
+    AUTH = 'auth',
+    VALIDATION = 'validation',
+    SERVER = 'server',
+    NOT_FOUND = 'not_found',
+    UNKNOWN = 'unknown'
+  }
+  ```
+
+- **Error Processing Logic**:
+  ```typescript
+  function processQueryError(error: unknown): ProcessedError {
+    if (isSupabaseError(error)) {
+      const errorCode = error.code;
+      // Map Supabase error codes to appropriate error types
+      if (errorCode === 'auth/invalid-credentials') return { 
+        type: ErrorType.AUTH, 
+        message: 'Invalid credentials. Please check your email and password.',
+        originalError: error
+      };
+      // Additional error mappings...
+    }
+    
+    if (error instanceof Error && error.message.includes('network')) {
+      return {
+        type: ErrorType.NETWORK,
+        message: 'Network connection issue. Please check your internet connection.',
+        originalError: error
+      };
+    }
+    
+    return {
+      type: ErrorType.UNKNOWN,
+      message: 'An unexpected error occurred. Please try again later.',
+      originalError: error
+    };
+  }
+  ```
+
+### Loading State Management
+- **Zustand Store Integration**:
+  ```typescript
+  interface LoadingState {
+  isLoading: boolean;
+  loadingResources: Set<string>;
+  startLoading: (resourceId: string) => void;
+  stopLoading: (resourceId: string) => void;
+  }
+
+  export const useLoadingStore = create<LoadingState>((set) => ({
+    isLoading: false,
+    loadingResources: new Set<string>(),
+    startLoading: (resourceId) => set((state) => {
+      const newResources = new Set(state.loadingResources);
+      newResources.add(resourceId);
+      return { loadingResources: newResources, isLoading: true };
+    }),
+    stopLoading: (resourceId) => set((state) => {
+      const newResources = new Set(state.loadingResources);
+      newResources.delete(resourceId);
+      return { 
+        loadingResources: newResources, 
+        isLoading: newResources.size > 0 
+      };
+    })
+  }));
+  ```
+
+### Custom Hooks
+- **useQueryState Hook**:
+  ```typescript
+  export function useQueryState<TData>(
+    queryKey: QueryKey,
+    options?: {
+      onSuccess?: (data: TData) => void;
+      onError?: (error: Error) => void;
+      showLoadingState?: boolean;
+    }
+  ) {
+    const { startLoading, stopLoading } = useLoadingStore();
+    const resourceId = Array.isArray(queryKey) ? queryKey.join('-') : String(queryKey);
+    
+    useEffect(() => {
+      if (options?.showLoadingState !== false) {
+        startLoading(resourceId);
+        return () => stopLoading(resourceId);
+      }
+    }, [resourceId]);
+    
+    return {
+      handleSuccess: (data: TData) => {
+        stopLoading(resourceId);
+        options?.onSuccess?.(data);
+      },
+      handleError: (error: Error) => {
+        stopLoading(resourceId);
+        const processedError = processQueryError(error);
+        // Handle error based on type
+        options?.onError?.(error);
+      }
+    };
+  }
+  ```
+
+### Accessibility Features
+- **ARIA Support for Loading Components**:
+  ```typescript
+  export const LoadingSpinner = ({ 
+    size = 'medium', 
+    variant = 'primary',
+    ariaLabel = 'Loading content'
+  }: LoadingSpinnerProps) => (
+    <div 
+      className={`spinner spinner--${size} spinner--${variant}`}
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label={ariaLabel}
+    >
+      <span className="sr-only">{ariaLabel}</span>
+      {/* Spinner implementation */}
+    </div>
+  );
+  ```
+
+### Error Retry Logic
+```typescript
+export function handleGlobalQueryError(error: unknown) {
+  const processedError = processQueryError(error);
+  
+  // Determine if error is retryable
+  const isRetryable = [ErrorType.NETWORK, ErrorType.SERVER].includes(processedError.type);
+  
+  // Show appropriate notification
+  showErrorNotification({
+    title: getErrorTitle(processedError.type),
+    message: processedError.message,
+    actions: isRetryable ? [{ label: 'Retry', action: 'retry' }] : undefined
+  });
+  
+  // Log error for monitoring
+  logErrorToMonitoring(processedError);
+}
+```
+</info added on 2025-07-14T09:18:46.448Z>
+
+## 6. Implement Optimistic Updates for Better UX [done]
+### Dependencies: 4.3, 4.4, 4.5
+### Description: Configure optimistic updates for mutations to provide immediate UI feedback
+### Details:
+1. Update mutation hooks to support optimistic updates
+2. Implement optimistic data generation functions for each entity type
+3. Configure rollback behavior for failed mutations
+4. Add optimistic UI updates for create, update, and delete operations
+5. Implement a toast notification system for success/failure feedback
+6. Create a utility to generate temporary IDs for new entities
+7. Test optimistic updates by simulating slow network connections
+8. Verify that the UI updates immediately and rolls back correctly on errors
+
+<info added on 2025-07-14T09:25:05.453Z>
+## Implementation Details for Optimistic Updates
+
+### Technical Architecture
+- Implement using React Query's `useMutation` with `onMutate`, `onError`, and `onSettled` callbacks
+- Use context objects to store previous state for rollback operations
+- Leverage QueryClient's cache manipulation methods: `setQueryData`, `invalidateQueries`, and `cancelQueries`
+
+### Code Structure
+```typescript
+// src/shared/hooks/optimistic/useOptimisticMutation.ts
+export function useOptimisticMutation<TData, TVariables>(options: {
+  mutationFn: (variables: TVariables) => Promise<TData>,
+  queryKey: QueryKey,
+  optimisticUpdate: (variables: TVariables, queryClient: QueryClient) => TData,
+  onSuccess?: (data: TData, variables: TVariables) => void,
+  rollbackOnError?: boolean
+}) {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: options.mutationFn,
+    onMutate: async (variables) => {
+      // Cancel outgoing refetches to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: options.queryKey });
+      
+      // Snapshot previous value for rollback
+      const previousData = queryClient.getQueryData(options.queryKey);
+      
+      // Apply optimistic update
+      queryClient.setQueryData(options.queryKey, 
+        options.optimisticUpdate(variables, queryClient));
+      
+      return { previousData };
+    },
+    onError: (err, variables, context) => {
+      if (options.rollbackOnError !== false) {
+        // Restore previous value on error
+        queryClient.setQueryData(options.queryKey, context?.previousData);
+      }
+      
+      // Show error toast
+      toast.error(`Operation failed: ${err.message}`);
+    },
+    onSettled: () => {
+      // Refetch to ensure server-client consistency
+      queryClient.invalidateQueries({ queryKey: options.queryKey });
+    }
+  });
+}
+```
+
+### Temporary ID Generation
+```typescript
+// src/shared/utils/tempId.ts
+export function generateTempId(): string {
+  return `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+export function isTempId(id: string): boolean {
+  return id.startsWith('temp_');
+}
+```
+
+### Network Simulation for Testing
+```typescript
+// src/test/networkSimulation.ts
+export function setupNetworkSimulation() {
+  // Mock service worker setup for testing
+  return {
+    simulateSlowConnection: () => {
+      // Add 2-second delay to all API requests
+      return setupWorker(
+        rest.all('*', async (req, res, ctx) => {
+          const originalResponse = await ctx.fetch(req);
+          return res(
+            ctx.delay(2000),
+            ctx.status(originalResponse.status),
+            ctx.json(await originalResponse.json())
+          );
+        })
+      );
+    },
+    
+    simulateFailure: (endpoint: string, failureRate = 0.5) => {
+      // Randomly fail specific endpoints
+      return setupWorker(
+        rest.all(endpoint, async (req, res, ctx) => {
+          if (Math.random() < failureRate) {
+            return res(
+              ctx.delay(500),
+              ctx.status(500),
+              ctx.json({ error: 'Simulated server error' })
+            );
+          }
+          
+          const originalResponse = await ctx.fetch(req);
+          return res(
+            ctx.status(originalResponse.status),
+            ctx.json(await originalResponse.json())
+          );
+        })
+      );
+    }
+  };
+}
+```
+
+### Performance Considerations
+- Use `structuredClone` for deep copying complex state objects
+- Implement batched updates to prevent cascading re-renders
+- Consider using immer for immutable state updates in optimistic functions
+- Add debounce for rapid consecutive mutations on the same entity
+
+### Advanced Rollback Strategy
+- Implement tiered rollback for dependent entities
+- Store relational integrity information in context objects
+- Support partial rollbacks for batch operations where some succeed
+</info added on 2025-07-14T09:25:05.453Z>
+

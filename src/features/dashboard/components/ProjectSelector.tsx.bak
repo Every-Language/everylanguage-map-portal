@@ -1,0 +1,404 @@
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { useAuth } from '../../auth'
+import { useProjects, useProjectsByUser, type Project } from '../../../shared/hooks/query/projects'
+import { Card, CardContent, Button } from '../../../shared/design-system'
+import { formatDistanceToNow } from 'date-fns'
+
+interface ProjectSelectorProps {
+  selectedProjectId?: string | null
+  onProjectSelect: (project: Project) => void
+  className?: string
+}
+
+interface ProjectWithMetadata extends Project {
+  language_name?: string
+  progress?: number
+  last_updated?: string
+  member_count?: number
+}
+
+const PROJECT_STORAGE_KEY = 'omt_recent_projects'
+const MAX_RECENT_PROJECTS = 5
+
+// Hook for managing recently accessed projects
+function useRecentProjects() {
+  const [recentProjectIds, setRecentProjectIds] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem(PROJECT_STORAGE_KEY)
+      return stored ? JSON.parse(stored) : []
+    } catch {
+      return []
+    }
+  })
+
+  const addRecentProject = useCallback((projectId: string) => {
+    setRecentProjectIds(prev => {
+      const filtered = prev.filter(id => id !== projectId)
+      const updated = [projectId, ...filtered].slice(0, MAX_RECENT_PROJECTS)
+      localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(updated))
+      return updated
+    })
+  }, [])
+
+  return { recentProjectIds, addRecentProject }
+}
+
+export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
+  selectedProjectId,
+  onProjectSelect,
+  className = ''
+}) => {
+  const { user } = useAuth()
+  const [isOpen, setIsOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [focusedIndex, setFocusedIndex] = useState(-1)
+  
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const { recentProjectIds, addRecentProject } = useRecentProjects()
+
+  // Debug: Log authentication state
+  console.log('ProjectSelector Debug:', {
+    user: user ? { id: user.id, email: user.email } : null,
+    isAuthenticated: !!user
+  })
+
+  // Fetch user's projects
+  const { data: userProjects = [], isLoading: isLoadingUserProjects, error: userProjectsError } = useProjectsByUser(user?.id ?? null)
+  
+  // Fetch all projects as fallback
+  const { data: allProjects = [], isLoading: isLoadingAllProjects, error: allProjectsError } = useProjects()
+
+  // Debug: Log project data
+  console.log('Projects Debug:', {
+    userProjects: userProjects?.length || 0,
+    allProjects: allProjects?.length || 0,
+    userProjectsError,
+    allProjectsError,
+    isLoadingUserProjects,
+    isLoadingAllProjects
+  })
+
+  // Use user projects if available, otherwise fall back to all projects for now
+  // TODO: Implement proper access control (shared projects, team projects, etc.)
+  const availableProjects = userProjects.length > 0 ? userProjects : allProjects
+
+  console.log('Available projects for dropdown:', availableProjects?.length || 0)
+
+  // Enhance projects with metadata
+  const projectsWithMetadata: ProjectWithMetadata[] = useMemo(() => {
+    return availableProjects.map(project => ({
+      ...project,
+      language_name: 'English', // TODO: Get from language_entities table
+      progress: Math.floor(Math.random() * 100), // TODO: Calculate from actual data
+      last_updated: project.updated_at || project.created_at || undefined,
+      member_count: 1 // TODO: Get from project_members table
+    }))
+  }, [availableProjects])
+
+  // Filter projects based on search
+  const filteredProjects = useMemo(() => {
+    if (!searchQuery.trim()) return projectsWithMetadata
+    
+    const query = searchQuery.toLowerCase()
+    return projectsWithMetadata.filter(project =>
+      project.name.toLowerCase().includes(query) ||
+      project.description?.toLowerCase().includes(query) ||
+      project.language_name?.toLowerCase().includes(query)
+    )
+  }, [projectsWithMetadata, searchQuery])
+
+  // Get recent projects
+  const recentProjects = useMemo(() => {
+    return recentProjectIds
+      .map(id => projectsWithMetadata.find(p => p.id === id))
+      .filter(Boolean) as ProjectWithMetadata[]
+  }, [recentProjectIds, projectsWithMetadata])
+
+  // Get currently selected project
+  const selectedProject = useMemo(() => {
+    return projectsWithMetadata.find(p => p.id === selectedProjectId)
+  }, [projectsWithMetadata, selectedProjectId])
+
+  // Handle project selection
+  const handleProjectSelect = useCallback((project: Project) => {
+    onProjectSelect(project)
+    addRecentProject(project.id)
+    setIsOpen(false)
+    setSearchQuery('')
+    setFocusedIndex(-1)
+  }, [onProjectSelect, addRecentProject])
+
+  // Keyboard navigation
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const items = filteredProjects
+    
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        setFocusedIndex(prev => (prev + 1) % items.length)
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        setFocusedIndex(prev => prev <= 0 ? items.length - 1 : prev - 1)
+        break
+      case 'Enter':
+        e.preventDefault()
+        if (focusedIndex >= 0 && items[focusedIndex]) {
+          handleProjectSelect(items[focusedIndex])
+        }
+        break
+      case 'Escape':
+        e.preventDefault()
+        setIsOpen(false)
+        setSearchQuery('')
+        setFocusedIndex(-1)
+        break
+    }
+  }, [filteredProjects, focusedIndex, handleProjectSelect])
+
+  // Click outside to close
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isOpen])
+
+  // Focus search input when dropdown opens
+  useEffect(() => {
+    if (isOpen && searchInputRef.current) {
+      searchInputRef.current.focus()
+    }
+  }, [isOpen])
+
+  if (isLoadingUserProjects) {
+    return (
+      <Card className={`w-full max-w-md ${className}`}>
+        <CardContent className="p-4">
+          <div className="animate-pulse">
+            <div className="h-4 bg-neutral-200 dark:bg-neutral-700 rounded w-3/4 mb-2"></div>
+            <div className="h-3 bg-neutral-200 dark:bg-neutral-700 rounded w-1/2"></div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <div className={`relative w-full max-w-md ${className}`} ref={dropdownRef}>
+      {/* Selected Project Display */}
+      <Card 
+        className="cursor-pointer hover:shadow-md transition-shadow duration-200"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 min-w-0">
+              {selectedProject ? (
+                <>
+                  <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                    {selectedProject.name}
+                  </h3>
+                  <div className="flex items-center gap-4 mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                    <span>{selectedProject.language_name}</span>
+                    <span>{selectedProject.progress}% complete</span>
+                    {selectedProject.last_updated && (
+                      <span>
+                        Updated {formatDistanceToNow(new Date(selectedProject.last_updated), { addSuffix: true })}
+                      </span>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
+                    Select a project
+                  </h3>
+                  <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                    Choose a project to view its dashboard
+                  </p>
+                </>
+              )}
+            </div>
+            <div className="ml-2 flex-shrink-0">
+              <svg 
+                className={`h-5 w-5 text-neutral-400 transition-transform duration-200 ${
+                  isOpen ? 'rotate-180' : ''
+                }`}
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Dropdown */}
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 z-50 mt-2 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 max-h-96 overflow-hidden">
+          {/* Search Input */}
+          <div className="p-3 border-b border-neutral-200 dark:border-neutral-700">
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent"
+              aria-label="Search projects"
+            />
+          </div>
+
+          <div className="max-h-64 overflow-y-auto">
+            {/* Recent Projects Section */}
+            {recentProjects.length > 0 && !searchQuery && (
+              <>
+                <div className="px-3 py-2 text-xs font-medium text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-750">
+                  Recent Projects
+                </div>
+                {recentProjects.map((project) => (
+                  <ProjectItem
+                    key={`recent-${project.id}`}
+                    project={project}
+                    isSelected={project.id === selectedProjectId}
+                    isFocused={false} // Recent projects don't participate in keyboard nav for now
+                    onClick={() => handleProjectSelect(project)}
+                  />
+                ))}
+                <div className="border-t border-neutral-200 dark:border-neutral-700 my-1"></div>
+              </>
+            )}
+
+            {/* All Projects */}
+            {filteredProjects.length > 0 ? (
+              <>
+                {!searchQuery && (
+                  <div className="px-3 py-2 text-xs font-medium text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-750">
+                    All Projects
+                  </div>
+                )}
+                {filteredProjects.map((project, index) => (
+                  <ProjectItem
+                    key={project.id}
+                    project={project}
+                    isSelected={project.id === selectedProjectId}
+                    isFocused={index === focusedIndex}
+                    onClick={() => handleProjectSelect(project)}
+                  />
+                ))}
+              </>
+            ) : (
+              <div className="p-4 text-center text-neutral-500 dark:text-neutral-400">
+                {searchQuery ? 'No projects match your search.' : 'No projects available.'}
+              </div>
+            )}
+          </div>
+
+          {/* Create New Project Link */}
+          <div className="border-t border-neutral-200 dark:border-neutral-700 p-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full justify-center"
+              onClick={() => {
+                setIsOpen(false)
+                window.location.href = '/projects/create'
+              }}
+            >
+              <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Create New Project
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Individual project item component
+interface ProjectItemProps {
+  project: ProjectWithMetadata
+  isSelected: boolean
+  isFocused: boolean
+  onClick: () => void
+}
+
+const ProjectItem: React.FC<ProjectItemProps> = ({
+  project,
+  isSelected,
+  isFocused,
+  onClick
+}) => {
+  return (
+    <div
+      className={`px-3 py-3 cursor-pointer transition-colors duration-200 ${
+        isFocused 
+          ? 'bg-accent-50 dark:bg-accent-900/20' 
+          : 'hover:bg-neutral-50 dark:hover:bg-neutral-700'
+      } ${
+        isSelected ? 'bg-accent-100 dark:bg-accent-900/30' : ''
+      }`}
+      onClick={onClick}
+      role="option"
+      aria-selected={isSelected}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex-1 min-w-0">
+          <h4 className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+            {project.name}
+          </h4>
+          {project.description && (
+            <p className="text-xs text-neutral-600 dark:text-neutral-400 truncate mt-0.5">
+              {project.description}
+            </p>
+          )}
+          <div className="flex items-center gap-3 mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+            <span className="flex items-center gap-1">
+              <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+              </svg>
+              {project.language_name}
+            </span>
+            <span className="flex items-center gap-1">
+              <div className="h-2 w-8 bg-neutral-200 dark:bg-neutral-600 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-accent-500 rounded-full transition-all duration-300"
+                  style={{ width: `${project.progress}%` }}
+                />
+              </div>
+              {project.progress}%
+            </span>
+            {project.member_count && (
+              <span className="flex items-center gap-1">
+                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                </svg>
+                {project.member_count}
+              </span>
+            )}
+          </div>
+        </div>
+        {isSelected && (
+          <div className="ml-2 flex-shrink-0">
+            <svg className="h-4 w-4 text-accent-600" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+} 

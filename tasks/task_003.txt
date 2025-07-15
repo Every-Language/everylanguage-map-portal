@@ -1,6 +1,6 @@
 # Task ID: 3
 # Title: Setup State Management with Zustand
-# Status: pending
+# Status: done
 # Dependencies: 1
 # Priority: high
 # Description: Implement Zustand stores for global state management across the application.

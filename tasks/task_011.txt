@@ -1,6 +1,6 @@
 # Task ID: 11
 # Title: Implement Filename Parsing Logic
-# Status: pending
+# Status: done
 # Dependencies: 9
 # Priority: medium
 # Description: Create robust filename parsing to automatically detect book, chapter, and verse information.
