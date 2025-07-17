@@ -539,67 +539,151 @@
       ],
       "priority": "medium",
       "details": "Create a custom audio player as a React functional component using HTML5 Audio API with useRef for DOM manipulation. Implement a compound component pattern for modularity with separate sub-components for controls, time display, and progress bar.\n\nCore features:\n- Controls: play/pause, skip ±5s, playback speed (0.5x-4x)\n- Time display: current time, total duration, clickable progress bar for seeking\n- Keyboard shortcuts: spacebar (play/pause), arrow keys (skip), +/- (volume)\n- Playback speed options: 0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x, 3x, 4x\n\nTechnical implementation:\n- Use React hooks (useState, useEffect, useRef, useCallback) for state management\n- Implement event listeners for audio events (timeupdate, ended, loadedmetadata)\n- Add error handling for audio loading and playback issues\n- Ensure proper cleanup of event listeners on unmount\n- Support multiple audio formats with fallback handling\n\nFile structure:\n- Create AudioPlayer component in src/shared/design-system/components/\n- Add AudioPlayer to design system exports\n- Create supporting types and interfaces\n- Add to component demo page for testing\n\nStyle with Tailwind CSS for a consistent look. Make the player responsive for different screen sizes.",
-      "testStrategy": "Unit tests for component rendering and state management. Integration tests for keyboard shortcuts and controls. Accessibility testing with screen readers and ARIA labels. Cross-browser compatibility testing. Responsive design testing on different screen sizes. Verify that all player controls function correctly.",
+      "testStrategy": "Unit tests for component rendering and state management using Jest and React Testing Library. Integration tests for keyboard shortcuts and controls. Accessibility testing with jest-axe and screen readers. Cross-browser compatibility testing in Chrome, Firefox, and Safari. Responsive design testing on different screen sizes. Verify that all player controls function correctly and timestamp precision for verse marking.",
       "subtasks": [
         {
           "id": "14.1",
           "title": "Set up component structure and file organization",
-          "status": "pending",
+          "status": "completed",
           "description": "Create the AudioPlayer component in the design system directory with proper file structure and exports."
         },
         {
           "id": "14.2",
           "title": "Implement core audio functionality with React hooks",
-          "status": "pending",
+          "status": "completed",
           "description": "Set up useRef for audio element and implement basic state management for play/pause, time tracking, and event listeners."
         },
         {
           "id": "14.3",
           "title": "Create sub-components for controls, time display, and progress bar",
-          "status": "pending",
+          "status": "completed",
           "description": "Build modular sub-components following the compound component pattern for better organization and reusability."
         },
         {
           "id": "14.4",
           "title": "Implement playback speed controls",
-          "status": "pending",
+          "status": "completed",
           "description": "Add dropdown with multiple playback speed options (0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x, 3x, 4x)."
         },
         {
           "id": "14.5",
           "title": "Add keyboard navigation and shortcuts",
-          "status": "pending",
+          "status": "completed",
           "description": "Implement keyboard event handlers for spacebar (play/pause), arrow keys (skip), and +/- (volume control)."
         },
         {
           "id": "14.6",
           "title": "Implement accessibility features",
-          "status": "pending",
+          "status": "completed",
           "description": "Add ARIA labels, ensure keyboard support, and optimize for screen reader compatibility."
         },
         {
           "id": "14.7",
           "title": "Style component with Tailwind CSS",
-          "status": "pending",
+          "status": "completed",
           "description": "Apply consistent styling using Tailwind CSS and ensure responsive design for different screen sizes."
         },
         {
           "id": "14.8",
           "title": "Write tests for the component",
-          "status": "pending",
-          "description": "Create unit tests for rendering and state management, integration tests for controls and keyboard shortcuts, and accessibility tests."
+          "status": "in-progress",
+          "description": "Create unit tests for rendering and state management, integration tests for controls and keyboard shortcuts, and accessibility tests using Jest, React Testing Library, and jest-axe."
         },
         {
           "id": "14.9",
           "title": "Add error handling and format support",
-          "status": "pending",
+          "status": "completed",
           "description": "Implement error handling for audio loading/playback issues and support for multiple audio formats with fallbacks."
         },
         {
           "id": "14.10",
           "title": "Add component to demo page",
-          "status": "pending",
+          "status": "completed",
           "description": "Integrate the AudioPlayer component into the design system demo page for testing and documentation."
+        },
+        {
+          "id": "14.11",
+          "title": "Create Radix UI-based Slider component",
+          "status": "completed",
+          "description": "Implement a reusable Slider component in src/shared/design-system/components/Slider.tsx with volume and default variants, and add to design system exports."
+        },
+        {
+          "id": "14.12",
+          "title": "Implement volume control with mute/unmute functionality",
+          "status": "completed",
+          "description": "Add volume slider with mute toggle button and keyboard shortcut (M key) for mute/unmute functionality."
+        },
+        {
+          "id": "14.13",
+          "title": "Add loading states with spinner indicator",
+          "status": "completed",
+          "description": "Implement visual feedback during audio loading with spinner indicator to improve user experience."
+        },
+        {
+          "id": "14.14",
+          "title": "Add dark mode support",
+          "status": "completed",
+          "description": "Ensure the AudioPlayer component works properly in dark mode with appropriate styling."
+        },
+        {
+          "id": "14.15",
+          "title": "Implement customizable control visibility",
+          "status": "completed",
+          "description": "Add options to customize visibility for each control group to support different use cases (full-featured, minimal, progress-only)."
+        },
+        {
+          "id": "14.16",
+          "title": "Enhance demo page with multiple variants",
+          "status": "completed",
+          "description": "Update the demo page with multiple AudioPlayer variants, keyboard shortcuts documentation, and event handler examples."
+        },
+        {
+          "id": "14.17",
+          "title": "Perform manual testing and cross-browser compatibility",
+          "status": "completed",
+          "description": "Test all features in different browsers, verify keyboard shortcuts, and ensure accessibility compliance."
+        },
+        {
+          "id": "14.18",
+          "title": "Prepare for integration with verse marking functionality",
+          "status": "completed",
+          "description": "Ensure the AudioPlayer component is ready for integration with verse marking functionality (Task 15)."
+        },
+        {
+          "id": "14.19",
+          "title": "Document manual testing results",
+          "status": "completed",
+          "description": "Document comprehensive testing results including functional testing, browser compatibility, and accessibility testing."
+        },
+        {
+          "id": "14.20",
+          "title": "Document integration points for verse marking",
+          "status": "completed",
+          "description": "Document API interface for verse marking including onTimeUpdate callback, seek functionality, current time access, and event handlers."
+        },
+        {
+          "id": "14.21",
+          "title": "Final review before Task 15 integration",
+          "status": "pending",
+          "description": "Conduct a final code review and ensure all documentation is up-to-date before proceeding with integration with the verse marking modal."
+        },
+        {
+          "id": "14.22",
+          "title": "Set up Jest and React Testing Library",
+          "status": "pending",
+          "description": "Configure Jest and React Testing Library for component testing if not already set up. Add jest-axe for accessibility testing."
+        },
+        {
+          "id": "14.23",
+          "title": "Create test files for AudioPlayer and Slider components",
+          "status": "pending",
+          "description": "Create comprehensive test files covering rendering, state management, user interactions, and accessibility."
+        },
+        {
+          "id": "14.24",
+          "title": "Verify timestamp precision for verse marking",
+          "status": "pending",
+          "description": "Test and ensure audio seeking accuracy and timestamp precision for fine-grained control needed for verse boundary marking."
         }
       ]
     },

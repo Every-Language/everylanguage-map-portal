@@ -1,171 +1,326 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../features/auth';
-import { useTheme } from '../../shared/theme';
-import { ProjectProvider, DashboardContent } from '../../features/dashboard';
+import { useSelectedProject } from '../../features/dashboard';
 import { 
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarNav,
-  SidebarNavItem,
-  SidebarFooter,
-  Button 
+  useRecentActivity, 
+  useProjectStats, 
+  useBibleVersionProgress, 
+  useProjectMetadata 
+} from '../../shared/hooks/query/dashboard';
+import { type MediaFile } from '../../shared/hooks/query/media-files';
+import { useBibleVersions } from '../../shared/hooks/query/bible-versions';
+import { 
+  Card, 
+  CardContent, 
+  CardHeader, 
+  CardTitle,
+  Select,
+  SelectItem,
+  Progress,
+  LoadingSpinner
 } from '../../shared/design-system';
 
-export const DashboardPage: React.FC = () => {
-  const { user, dbUser, signOut } = useAuth();
-  const { theme, setTheme, resolvedTheme } = useTheme();
+export const DashboardPage: React.FC = React.memo(() => {
+  const { user, dbUser } = useAuth();
+  const { selectedProject } = useSelectedProject();
+  const [selectedBibleVersion, setSelectedBibleVersion] = useState<string>('');
 
-  const handleSignOut = async () => {
-    await signOut();
-  };
+  // Data queries
+  const { data: recentActivity, isLoading: activityLoading } = useRecentActivity(selectedProject?.id || null, 10);
+  const { data: projectStats, isLoading: statsLoading } = useProjectStats(selectedProject?.id || null);
+  const { data: bibleVersionProgress, isLoading: progressLoading } = useBibleVersionProgress(selectedProject?.id || null);
+  const { data: projectMetadata, isLoading: metadataLoading } = useProjectMetadata(selectedProject?.id || null);
+  const { data: bibleVersions } = useBibleVersions();
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-primary-100 to-accent-50 dark:from-neutral-900 dark:via-neutral-800 dark:to-neutral-700 transition-theme">
-      {/* Sidebar */}
-      <Sidebar>
-        <SidebarHeader>
-          <div className="flex items-center">
-            <div className="h-8 w-8 bg-gradient-to-br from-accent-500 to-accent-700 rounded-lg flex items-center justify-center mr-3">
-              <svg
-                className="h-5 w-5 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
-                />
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-sm font-black text-neutral-900 dark:text-neutral-100">OMT.</h1>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">Audio Platform</p>
-            </div>
-          </div>
-        </SidebarHeader>
-        
-        <SidebarContent>
-          <SidebarNav>
-            <SidebarNavItem 
-              active={true}
-              icon={
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5a2 2 0 012-2h4a2 2 0 012 2v14l-5-3-5 3V5z" />
-                </svg>
-              }
-            >
-              Dashboard
-            </SidebarNavItem>
-            
-            <SidebarNavItem 
-              icon={
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                </svg>
-              }
-            >
-              Projects
-            </SidebarNavItem>
-            
-            <SidebarNavItem 
-              icon={
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-              }
-            >
-              Upload
-            </SidebarNavItem>
-            
-            <SidebarNavItem 
-              icon={
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              }
-            >
-              Settings
-            </SidebarNavItem>
-          </SidebarNav>
-        </SidebarContent>
-        
-        <SidebarFooter>
-          <div className="flex items-center space-x-3">
-            <div className="h-8 w-8 bg-gradient-to-br from-accent-600 to-accent-700 rounded-full flex items-center justify-center">
-              <span className="text-white text-sm font-medium">
-                {user?.email?.charAt(0).toUpperCase()}
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
-                {dbUser?.first_name && dbUser?.last_name 
-                  ? `${dbUser.first_name} ${dbUser.last_name}`
-                  : user?.email?.split('@')[0]
-                }
-              </p>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                {user?.email}
-              </p>
-            </div>
-            <Button 
-              size="sm" 
-              variant="ghost" 
-              onClick={handleSignOut}
-              className="text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
-              title="Sign out"
-            >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-            </Button>
-          </div>
-        </SidebarFooter>
-      </Sidebar>
+  // Set default bible version
+  React.useEffect(() => {
+    if (bibleVersions && bibleVersions.length > 0 && !selectedBibleVersion) {
+      setSelectedBibleVersion(bibleVersions[0].id);
+    }
+  }, [bibleVersions, selectedBibleVersion]);
 
-      {/* Main Content */}
-      <div className="ml-64">
-        <div className="p-8">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">Dashboard</h1>
-              <p className="text-neutral-600 dark:text-neutral-400 mt-1">
-                Welcome back, {dbUser?.first_name || user?.email?.split('@')[0]}!
-              </p>
-            </div>
-            <div className="flex items-center space-x-4">
-              {/* Theme Toggle */}
-              <button
-                onClick={() => setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light')}
-                className="p-2 rounded-lg bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-all duration-200"
-                aria-label="Toggle theme"
-                title={`Current theme: ${theme}. Click to cycle through light/dark/system themes.`}
-              >
-                {resolvedTheme === 'light' ? (
-                  <svg className="h-5 w-5 text-neutral-700 dark:text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                  </svg>
-                ) : (
-                  <svg className="h-5 w-5 text-neutral-700 dark:text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Main Content Area with Project Context */}
-          <ProjectProvider>
-            <DashboardContent />
-          </ProjectProvider>
+  if (!selectedProject) {
+    return (
+      <div className="p-8">
+        <div className="max-w-md mx-auto mt-16 text-center">
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">
+            No Project Selected
+          </h1>
+          <p className="text-neutral-600 dark:text-neutral-400">
+            Please select a project from the sidebar to view the dashboard.
+          </p>
         </div>
       </div>
+    );
+  }
+
+  const selectedVersionProgress = bibleVersionProgress?.find(vp => vp.version.id === selectedBibleVersion);
+
+  return (
+    <div className="p-8 space-y-8">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">Dashboard</h1>
+        <p className="text-neutral-600 dark:text-neutral-400 mt-1">
+          Welcome back, {dbUser?.first_name || user?.email?.split('@')[0]}!
+        </p>
+        <p className="text-lg font-medium text-neutral-800 dark:text-neutral-200 mt-2">
+          {selectedProject.name}
+        </p>
+      </div>
+
+      {/* Recent Activity Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {activityLoading ? (
+            <LoadingSpinner />
+          ) : (
+            <div className="space-y-6">
+              {/* Recent Media Files */}
+              <div>
+                <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">
+                  Recently Updated Audio Files
+                </h3>
+                {recentActivity?.mediaFiles && recentActivity.mediaFiles.length > 0 ? (
+                  <div className="space-y-2">
+                    {recentActivity.mediaFiles.slice(0, 5).map((file: MediaFile & { books?: { name: string }, chapters?: { chapter_number: number } }) => (
+                      <div key={file.id} className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
+                        <div>
+                          <p className="font-medium text-neutral-900 dark:text-neutral-100">
+                            {file.books?.name} {file.chapters?.chapter_number}
+                          </p>
+                          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                            {file.upload_status} • {file.updated_at ? new Date(file.updated_at).toLocaleDateString() : 'Unknown date'}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                            file.check_status === 'approved' 
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+                              : file.check_status === 'pending'
+                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'
+                              : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
+                          }`}>
+                            {file.check_status || 'Not checked'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-neutral-600 dark:text-neutral-400">No recent audio file activity</p>
+                )}
+              </div>
+
+              {/* Recent Uploads */}
+              <div>
+                <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">
+                  Recent Uploads
+                </h3>
+                {recentActivity?.recentUploads && recentActivity.recentUploads.length > 0 ? (
+                  <div className="space-y-2">
+                    {recentActivity.recentUploads.slice(0, 3).map((file: MediaFile) => (
+                      <div key={file.id} className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
+                        <div>
+                          <p className="font-medium text-neutral-900 dark:text-neutral-100">
+                            {file.books?.name} {file.chapters?.chapter_number}
+                          </p>
+                          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                            Uploaded {new Date(file.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-neutral-600 dark:text-neutral-400">No recent uploads</p>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Project Statistics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <div>
+                <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
+                  {statsLoading ? '...' : `${Math.round(projectStats?.overallProgress || 0)}%`}
+                </p>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">Overall Progress</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <div>
+                <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
+                  {statsLoading ? '...' : projectStats?.audioFilesCount || 0}
+                </p>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">Audio Files</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <div>
+                <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
+                  {statsLoading ? '...' : `${projectStats?.totalVersesCovered || 0}`}
+                </p>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">Verses Covered</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <div>
+                <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
+                  {statsLoading ? '...' : projectStats?.textVersionsCount || 0}
+                </p>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">Text Versions</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Bible Version Progress */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Bible Progress by Version</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {progressLoading ? (
+            <LoadingSpinner />
+          ) : (
+            <div className="space-y-4">
+              {/* Bible Version Selector */}
+              <div className="w-full max-w-xs">
+                <Select 
+                  value={selectedBibleVersion} 
+                  onValueChange={setSelectedBibleVersion}
+                  placeholder="Select Bible version"
+                >
+                  {bibleVersions?.map((version) => (
+                    <SelectItem key={version.id} value={version.id}>
+                      {version.name}
+                    </SelectItem>
+                  ))}
+                </Select>
+              </div>
+
+              {/* Progress Display */}
+              {selectedVersionProgress && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-medium text-neutral-900 dark:text-neutral-100">
+                      {selectedVersionProgress.version.name}
+                    </h3>
+                    <span className="text-sm text-neutral-600 dark:text-neutral-400">
+                      {selectedVersionProgress.versesCovered} / {selectedVersionProgress.totalVerses} verses
+                    </span>
+                  </div>
+                  <Progress 
+                    value={selectedVersionProgress.progress} 
+                    className="w-full h-3"
+                  />
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                    {selectedVersionProgress.progress.toFixed(1)}% complete
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Project Metadata */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Project Information</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {metadataLoading ? (
+            <LoadingSpinner />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Description</h3>
+                  <p className="text-neutral-900 dark:text-neutral-100">
+                    {projectMetadata?.description || 'No description provided'}
+                  </p>
+                </div>
+                
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Source Language</h3>
+                  <p className="text-neutral-900 dark:text-neutral-100">
+                    {projectMetadata?.sourceLanguage?.name || 'Not specified'}
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Target Language</h3>
+                  <p className="text-neutral-900 dark:text-neutral-100">
+                    {projectMetadata?.targetLanguage?.name || 'Not specified'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Region</h3>
+                  <p className="text-neutral-900 dark:text-neutral-100">
+                    {projectMetadata?.region?.name || 'Not specified'}
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Team Members</h3>
+                  {projectMetadata?.users && projectMetadata.users.length > 0 ? (
+                    <div className="space-y-2">
+                      {projectMetadata.users.map((userRole, index) => (
+                        <div key={index} className="flex items-center justify-between">
+                          <span className="text-neutral-900 dark:text-neutral-100">
+                            {userRole.user.first_name} {userRole.user.last_name}
+                          </span>
+                          <span className="text-sm text-neutral-600 dark:text-neutral-400">
+                            {userRole.roles.join(', ')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-neutral-600 dark:text-neutral-400">No team members found</p>
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Created</h3>
+                  <p className="text-neutral-900 dark:text-neutral-100">
+                    {projectMetadata?.createdAt ? new Date(projectMetadata.createdAt).toLocaleDateString() : 'Unknown'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
-}; 
+}); 

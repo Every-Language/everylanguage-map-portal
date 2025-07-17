@@ -1,500 +1,374 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import React, { useCallback, useState, useRef } from 'react';
 import { cn } from '../utils';
-import { 
-  Upload, 
-  File, 
-  X, 
-  CheckCircle, 
-  AlertCircle,
-  Loader2,
-  FileAudio,
-  FileImage,
-  FileText,
-  FileVideo,
-  Folder
-} from 'lucide-react';
+import { Button } from './Button';
+import { ArrowUpTrayIcon, DocumentTextIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
-const fileUploadVariants = cva(
-  'relative border-2 border-dashed rounded-lg transition-all duration-200 focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2',
-  {
-    variants: {
-      variant: {
-        default: 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500',
-        active: 'border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/20',
-        error: 'border-red-500 dark:border-red-400 bg-red-50 dark:bg-red-900/20',
-        success: 'border-green-500 dark:border-green-400 bg-green-50 dark:bg-green-900/20',
-      },
-      size: {
-        sm: 'p-4 min-h-[120px]',
-        md: 'p-6 min-h-[160px]',
-        lg: 'p-8 min-h-[200px]',
-      },
-    },
-    defaultVariants: {
-      variant: 'default',
-      size: 'md',
-    },
-  }
-);
-
-interface FileWithPreview extends File {
-  id: string;
-  preview?: string;
-  progress?: number;
-  error?: string;
-  status?: 'pending' | 'uploading' | 'success' | 'error';
-}
-
-interface FileUploadProps extends VariantProps<typeof fileUploadVariants> {
-  onFilesChange?: (files: FileWithPreview[]) => void;
-  onUpload?: (files: FileWithPreview[]) => Promise<void>;
+// General FileUpload component interface
+interface FileUploadProps {
   accept?: string;
   multiple?: boolean;
-  maxSize?: number; // in bytes
   maxFiles?: number;
-  disabled?: boolean;
-  className?: string;
-  children?: React.ReactNode;
-  showPreview?: boolean;
+  maxSize?: number;
+  onFilesChange?: (files: File[]) => void;
   allowedTypes?: string[];
   uploadText?: string;
-  dragActiveText?: string;
-  errorText?: string;
-  successText?: string;
-  validateFile?: (file: File) => string | null;
+  showPreview?: boolean;
+  size?: 'sm' | 'md' | 'lg';
+  className?: string;
+  disabled?: boolean;
 }
 
-const getFileIcon = (type: string) => {
-  if (type.startsWith('image/')) return FileImage;
-  if (type.startsWith('audio/')) return FileAudio;
-  if (type.startsWith('video/')) return FileVideo;
-  if (type.startsWith('text/')) return FileText;
-  return File;
-};
+// CSV-specific interface
+interface CSVRow {
+  [key: string]: string;
+}
 
-const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-};
+interface CSVUploadProps {
+  onFileUpload: (csvData: CSVRow[]) => void;
+  acceptedFormats?: string[];
+  maxFileSize?: number; // in MB
+  className?: string;
+  disabled?: boolean;
+}
 
-export const FileUpload = React.forwardRef<HTMLDivElement, FileUploadProps>(
-  ({
-    onFilesChange,
-    onUpload,
-    accept = '*/*',
-    multiple = false,
-    maxSize = 10 * 1024 * 1024, // 10MB
-    maxFiles = 5,
-    disabled = false,
-    className,
-    children,
-    showPreview = true,
-    allowedTypes = [],
-    uploadText = 'Drop files here or click to upload',
-    dragActiveText = 'Drop files here',
-    errorText = 'Upload failed',
-    successText = 'Files uploaded successfully',
-    validateFile,
-    variant: initialVariant = 'default',
-    size,
-    ...props
-  }, ref) => {
-    const [files, setFiles] = useState<FileWithPreview[]>([]);
-    const [dragActive, setDragActive] = useState(false);
-    const [isUploading, setIsUploading] = useState(false);
-    const [variant, setVariant] = useState<'default' | 'active' | 'error' | 'success'>(initialVariant);
-    const [globalError, setGlobalError] = useState<string | null>(null);
-    const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
-    
-    const inputRef = useRef<HTMLInputElement>(null);
-    const dragCounterRef = useRef(0);
+// General FileUpload component
+export const FileUpload: React.FC<FileUploadProps> = ({
+  accept = "*/*",
+  multiple = false,
+  maxFiles = 1,
+  maxSize = 10 * 1024 * 1024, // 10MB default
+  onFilesChange,
+  allowedTypes,
+  uploadText = "Drop files here or click to upload",
+  showPreview = false,
+  size = 'md',
+  className,
+  disabled = false
+}) => {
+  const [dragActive, setDragActive] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Generate unique ID for file
-    const generateId = () => Math.random().toString(36).substring(2, 9);
+  const validateFile = useCallback((file: File): string | null => {
+    if (allowedTypes && !allowedTypes.includes(file.type)) {
+      return `File type ${file.type} is not allowed`;
+    }
+    if (file.size > maxSize) {
+      return `File size exceeds ${Math.round(maxSize / 1024 / 1024)}MB limit`;
+    }
+    return null;
+  }, [allowedTypes, maxSize]);
 
-    // Validate file function
-    const validateFileInternal = useCallback((file: File): string | null => {
-      // Custom validation
-      if (validateFile) {
-        const customError = validateFile(file);
-        if (customError) return customError;
+  const handleFiles = useCallback((newFiles: FileList | File[]) => {
+    const fileArray = Array.from(newFiles);
+    const validFiles: File[] = [];
+    let errorMsg: string | null = null;
+
+    for (const file of fileArray) {
+      const validation = validateFile(file);
+      if (validation) {
+        errorMsg = validation;
+        break;
       }
+      validFiles.push(file);
+    }
 
-      // Size validation
-      if (file.size > maxSize) {
-        return `File size must be less than ${formatFileSize(maxSize)}`;
-      }
+    if (errorMsg) {
+      setError(errorMsg);
+      return;
+    }
 
-      // Type validation
-      if (allowedTypes.length > 0) {
-        const isAllowed = allowedTypes.some(type => {
-          if (type.endsWith('/*')) {
-            return file.type.startsWith(type.slice(0, -1));
-          }
-          return file.type === type;
-        });
-        if (!isAllowed) {
-          return `File type not allowed. Allowed types: ${allowedTypes.join(', ')}`;
-        }
-      }
+    if (!multiple && validFiles.length > 1) {
+      setError('Only one file is allowed');
+      return;
+    }
 
-      return null;
-    }, [maxSize, allowedTypes, validateFile]);
+    if (multiple && validFiles.length > maxFiles) {
+      setError(`Maximum ${maxFiles} files allowed`);
+      return;
+    }
 
-    // Process files
-    const processFiles = useCallback(async (fileList: FileList | File[]) => {
-      const newFiles: FileWithPreview[] = [];
-      const filesToProcess = Array.from(fileList);
+    setError(null);
+    const finalFiles = multiple ? [...files, ...validFiles].slice(0, maxFiles) : validFiles;
+    setFiles(finalFiles);
+    onFilesChange?.(finalFiles);
+  }, [files, multiple, maxFiles, validateFile, onFilesChange]);
 
-      // Check max files limit
-      if (files.length + filesToProcess.length > maxFiles) {
-        setGlobalError(`Maximum ${maxFiles} files allowed`);
-        setVariant('error');
-        return;
-      }
-
-      for (const file of filesToProcess) {
-        const error = validateFileInternal(file);
-        const fileWithPreview: FileWithPreview = {
-          ...file,
-          id: generateId(),
-          status: error ? 'error' : 'pending',
-          error: error || undefined,
-        };
-
-        // Generate preview for images
-        if (file.type.startsWith('image/') && showPreview) {
-          try {
-            const preview = URL.createObjectURL(file);
-            fileWithPreview.preview = preview;
-          } catch (err) {
-            console.warn('Failed to create preview:', err);
-          }
-        }
-
-        newFiles.push(fileWithPreview);
-      }
-
-      const updatedFiles = [...files, ...newFiles];
-      setFiles(updatedFiles);
-      onFilesChange?.(updatedFiles);
-      
-      // Set variant based on file status
-      const hasErrors = newFiles.some(f => f.error);
-      if (hasErrors) {
-        setVariant('error');
-      } else {
-        setVariant('default');
-        setGlobalError(null);
-      }
-    }, [files, maxFiles, validateFileInternal, showPreview, onFilesChange]);
-
-    // Handle file input change
-    const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-      const fileList = e.target.files;
-      if (fileList) {
-        processFiles(fileList);
-      }
-    }, [processFiles]);
-
-    // Handle drag events
-    const handleDragEnter = useCallback((e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dragCounterRef.current++;
-      
-      if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-        setDragActive(true);
-        setVariant('active');
-      }
-    }, []);
-
-    const handleDragLeave = useCallback((e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dragCounterRef.current--;
-      
-      if (dragCounterRef.current === 0) {
-        setDragActive(false);
-        setVariant('default');
-      }
-    }, []);
-
-    const handleDragOver = useCallback((e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-    }, []);
-
-    const handleDrop = useCallback((e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      
+  const handleDrag = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
       setDragActive(false);
-      dragCounterRef.current = 0;
-      setVariant('default');
-      
-      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        processFiles(e.dataTransfer.files);
-        e.dataTransfer.clearData();
-      }
-    }, [processFiles]);
+    }
+  }, []);
 
-    // Handle file removal
-    const removeFile = useCallback((fileId: string) => {
-      setFiles(prevFiles => {
-        const file = prevFiles.find(f => f.id === fileId);
-        if (file && file.preview) {
-          URL.revokeObjectURL(file.preview);
-        }
-        const updatedFiles = prevFiles.filter(f => f.id !== fileId);
-        onFilesChange?.(updatedFiles);
-        return updatedFiles;
-      });
-    }, [onFilesChange]);
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    if (disabled || !e.dataTransfer.files) return;
+    handleFiles(e.dataTransfer.files);
+  }, [disabled, handleFiles]);
 
-    // Handle upload
-    const handleUpload = useCallback(async () => {
-      if (!onUpload || isUploading) return;
-      
-      const validFiles = files.filter(f => !f.error);
-      if (validFiles.length === 0) return;
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (disabled || !e.target.files) return;
+    handleFiles(e.target.files);
+  }, [disabled, handleFiles]);
 
-      setIsUploading(true);
-      setGlobalError(null);
-      setGlobalSuccess(null);
+  const removeFile = useCallback((index: number) => {
+    const newFiles = files.filter((_, i) => i !== index);
+    setFiles(newFiles);
+    onFilesChange?.(newFiles);
+  }, [files, onFilesChange]);
 
-      try {
-        // Update files to uploading status
-        setFiles(prevFiles => 
-          prevFiles.map(f => 
-            f.error ? f : { ...f, status: 'uploading' as const, progress: 0 }
-          )
-        );
+  const openFileDialog = useCallback(() => {
+    if (!disabled) {
+      fileInputRef.current?.click();
+    }
+  }, [disabled]);
 
-        await onUpload(validFiles);
+  const sizeClasses = {
+    sm: 'p-4 text-sm',
+    md: 'p-6 text-base', 
+    lg: 'p-8 text-lg'
+  };
 
-        // Mark as successful
-        setFiles(prevFiles =>
-          prevFiles.map(f =>
-            f.error ? f : { ...f, status: 'success' as const, progress: 100 }
-          )
-        );
-        
-        setGlobalSuccess(successText);
-        setVariant('success');
-      } catch (error) {
-        setFiles(prevFiles =>
-          prevFiles.map(f =>
-            f.error ? f : { 
-              ...f, 
-              status: 'error' as const, 
-              error: error instanceof Error ? error.message : 'Upload failed'
-            }
-          )
-        );
-        
-        setGlobalError(errorText);
-        setVariant('error');
-      } finally {
-        setIsUploading(false);
-      }
-    }, [files, onUpload, isUploading, successText, errorText]);
-
-    // Click handler for upload area
-    const handleClick = useCallback(() => {
-      if (!disabled) {
-        inputRef.current?.click();
-      }
-    }, [disabled]);
-
-    // Clean up previews on unmount
-    useEffect(() => {
-      return () => {
-        files.forEach(file => {
-          if (file.preview) {
-            URL.revokeObjectURL(file.preview);
-          }
-        });
-      };
-    }, [files]);
-
-    return (
-      <div ref={ref} className={cn('w-full', className)} {...props}>
-        {/* Upload Area */}
-        <div
-          className={cn(fileUploadVariants({ variant, size }))}
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-          onClick={handleClick}
-          role="button"
-          tabIndex={disabled ? -1 : 0}
-          aria-label="File upload area"
-          aria-disabled={disabled}
-        >
-          <input
-            ref={inputRef}
-            type="file"
-            accept={accept}
-            multiple={multiple}
-            onChange={handleFileChange}
-            disabled={disabled}
-            className="sr-only"
-          />
-          
-          {children || (
-            <div className="flex flex-col items-center justify-center text-center">
-              <Upload 
-                size={48} 
-                className={cn(
-                  'mb-4 text-gray-400',
-                  dragActive && 'text-blue-500',
-                  variant === 'error' && 'text-red-500',
-                  variant === 'success' && 'text-green-500'
-                )}
-              />
-              <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                {dragActive ? dragActiveText : uploadText}
-              </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {accept === '*/*' ? 'Any file type' : accept.replace(/,/g, ', ')}
-                {maxSize && ` • Max ${formatFileSize(maxSize)}`}
-                {multiple && ` • Up to ${maxFiles} files`}
-              </p>
-            </div>
-          )}
+  return (
+    <div className={cn("space-y-4", className)}>
+      <div
+        className={cn(
+          "border-2 border-dashed rounded-lg transition-colors cursor-pointer",
+          dragActive 
+            ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" 
+            : "border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600",
+          disabled && "opacity-50 cursor-not-allowed",
+          sizeClasses[size]
+        )}
+        onDragEnter={handleDrag}
+        onDragLeave={handleDrag}
+        onDragOver={handleDrag}
+        onDrop={handleDrop}
+        onClick={openFileDialog}
+      >
+        <div className="text-center">
+          <ArrowUpTrayIcon className="mx-auto h-12 w-12 text-gray-400" />
+          <p className="mt-2 text-gray-600 dark:text-gray-400">
+            {uploadText}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+            {accept !== "*/*" && `Accepted: ${accept}`}
+            {maxSize && ` • Max size: ${Math.round(maxSize / 1024 / 1024)}MB`}
+          </p>
         </div>
+      </div>
 
-        {/* Global Messages */}
-        {globalError && (
-          <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-            <div className="flex items-center">
-              <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
-              <span className="text-sm text-red-700 dark:text-red-300">{globalError}</span>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={accept}
+        multiple={multiple}
+        onChange={handleInputChange}
+        className="hidden"
+        disabled={disabled}
+      />
+
+      {showPreview && files.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+            Selected Files:
+          </h4>
+          {files.map((file, index) => (
+            <div key={index} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded">
+              <span className="text-sm truncate flex-1">{file.name}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeFile(index);
+                }}
+              >
+                <XMarkIcon className="h-4 w-4" />
+              </Button>
             </div>
-          </div>
-        )}
+          ))}
+        </div>
+      )}
 
-        {globalSuccess && (
-          <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-            <div className="flex items-center">
-              <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
-              <span className="text-sm text-green-700 dark:text-green-300">{globalSuccess}</span>
-            </div>
-          </div>
-        )}
+      {error && (
+        <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md p-4">
+          <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+        </div>
+      )}
+    </div>
+  );
+};
 
-        {/* File List */}
-        {files.length > 0 && (
+// CSV-specific component
+export const CSVUpload: React.FC<CSVUploadProps> = ({
+  onFileUpload,
+  acceptedFormats = ['.csv', '.txt'],
+  maxFileSize = 10,
+  className,
+  disabled = false
+}) => {
+  const [dragActive, setDragActive] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const parseCSV = useCallback((text: string): CSVRow[] => {
+    const lines = text.split('\n').filter(line => line.trim());
+    if (lines.length === 0) return [];
+
+    // Detect separator (tab vs comma)
+    const firstLine = lines[0];
+    const tabCount = (firstLine.match(/\t/g) || []).length;
+    const commaCount = (firstLine.match(/,/g) || []).length;
+    const separator = tabCount > commaCount ? '\t' : ',';
+
+    // Parse headers (first row)
+    const headers = lines[0].split(separator).map(h => h.trim().replace(/['"]/g, ''));
+    
+    // Parse data rows (skip first row which is headers)
+    const data = lines.slice(1).map(line => {
+      const values = line.split(separator).map(v => v.trim().replace(/['"]/g, ''));
+      return headers.reduce((obj, header, index) => {
+        obj[header] = values[index] || '';
+        return obj;
+      }, {} as CSVRow);
+    });
+
+    return data;
+  }, []);
+
+  const handleFile = useCallback(async (file: File) => {
+    if (!file) return;
+
+    setError(null);
+    setIsProcessing(true);
+
+    try {
+      // Validate file type
+      const fileName = file.name.toLowerCase();
+      const hasValidExtension = acceptedFormats.some(format => 
+        fileName.endsWith(format.toLowerCase())
+      );
+      
+      if (!hasValidExtension) {
+        throw new Error(`File must be one of: ${acceptedFormats.join(', ')}`);
+      }
+
+      // Validate file size
+      const fileSizeMB = file.size / 1024 / 1024;
+      if (fileSizeMB > maxFileSize) {
+        throw new Error(`File size must be less than ${maxFileSize}MB`);
+      }
+
+      // Read and parse file
+      const text = await file.text();
+      const csvData = parseCSV(text);
+      
+      if (csvData.length === 0) {
+        throw new Error('CSV file appears to be empty or invalid');
+      }
+
+      onFileUpload(csvData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to process file');
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [acceptedFormats, maxFileSize, parseCSV, onFileUpload]);
+
+  const handleDrag = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (disabled) return;
+    
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  }, [disabled]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    if (disabled) return;
+
+    const files = e.dataTransfer.files;
+    if (files && files[0]) {
+      handleFile(files[0]);
+    }
+  }, [disabled, handleFile]);
+
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (disabled) return;
+    
+    const files = e.target.files;
+    if (files && files[0]) {
+      handleFile(files[0]);
+    }
+    // Reset input
+    e.target.value = '';
+  }, [disabled, handleFile]);
+
+  return (
+    <div className={cn("w-full", className)}>
+      <div
+        className={cn(
+          "border-2 border-dashed rounded-lg p-6 text-center transition-colors",
+          dragActive 
+            ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" 
+            : "border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600",
+          disabled && "opacity-50 cursor-not-allowed",
+          !disabled && "cursor-pointer"
+        )}
+        onDragEnter={handleDrag}
+        onDragLeave={handleDrag}
+        onDragOver={handleDrag}
+        onDrop={handleDrop}
+        onClick={() => !disabled && document.getElementById('csv-file-input')?.click()}
+      >
+        <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
+        <p className="mt-2 text-lg font-medium text-gray-900 dark:text-gray-100">
+          {isProcessing ? 'Processing...' : 'Upload CSV File'}
+        </p>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Drag and drop a CSV file here, or click to select
+        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+          Supports: {acceptedFormats.join(', ')} • Max size: {maxFileSize}MB
+        </p>
+        
+        {isProcessing && (
           <div className="mt-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-                Files ({files.length})
-              </h3>
-              {onUpload && files.some(f => !f.error) && (
-                <button
-                  onClick={handleUpload}
-                  disabled={isUploading || disabled}
-                  className="inline-flex items-center px-3 py-1 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
-                >
-                  {isUploading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-4 h-4 mr-2" />
-                      Upload
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-            
-            <div className="space-y-2">
-              {files.map((file) => {
-                const Icon = getFileIcon(file.type);
-                return (
-                  <div
-                    key={file.id}
-                    className="flex items-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
-                  >
-                    {/* Preview or Icon */}
-                    {file.preview ? (
-                      <img
-                        src={file.preview}
-                        alt={file.name}
-                        className="w-10 h-10 object-cover rounded"
-                      />
-                    ) : (
-                      <Icon className="w-10 h-10 text-gray-400" />
-                    )}
-                    
-                    {/* File Info */}
-                    <div className="ml-3 flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                        {file.name}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {formatFileSize(file.size)}
-                      </p>
-                      
-                      {/* Progress Bar */}
-                      {file.status === 'uploading' && (
-                        <div className="mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-                          <div
-                            className="bg-blue-600 h-1.5 rounded-full transition-all duration-200"
-                            style={{ width: `${file.progress || 0}%` }}
-                          />
-                        </div>
-                      )}
-                      
-                      {/* Error Message */}
-                      {file.error && (
-                        <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                          {file.error}
-                        </p>
-                      )}
-                    </div>
-                    
-                    {/* Status Icon */}
-                    <div className="ml-3 flex items-center">
-                      {file.status === 'uploading' && (
-                        <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-                      )}
-                      {file.status === 'success' && (
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                      )}
-                      {file.status === 'error' && (
-                        <AlertCircle className="w-5 h-5 text-red-500" />
-                      )}
-                      {file.status === 'pending' && !file.error && (
-                        <button
-                          onClick={() => removeFile(file.id)}
-                          className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                          aria-label="Remove file"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
           </div>
         )}
       </div>
-    );
-  }
-);
 
-FileUpload.displayName = 'FileUpload';
+      <input
+        id="csv-file-input"
+        type="file"
+        accept={acceptedFormats.join(',')}
+        onChange={handleInputChange}
+        className="hidden"
+        disabled={disabled || isProcessing}
+      />
 
-export default FileUpload; 
+      {error && (
+        <div className="mt-4 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md p-4">
+          <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+        </div>
+      )}
+    </div>
+  );
+}; 

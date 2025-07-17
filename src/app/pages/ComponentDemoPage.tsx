@@ -831,24 +831,59 @@ function AlertDemo() {
 
 // Media Components Demos
 function AudioPlayerDemo() {
+  const handleTimeUpdate = (currentTime: number, duration: number) => {
+    console.log(`Audio progress: ${currentTime}/${duration} seconds`);
+  };
+
   return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-medium text-gray-900">Default Audio Player</h3>
+    <div className="space-y-6">
+      <h3 className="text-sm font-medium text-gray-900">Full-Featured Audio Player</h3>
+      <p className="text-sm text-gray-600">Complete audio player with all controls enabled</p>
       <AudioPlayer
         src="https://www.soundjay.com/misc/sounds/bell-ringing-05.wav"
-        title="Sample Audio Track"
+        aria-label="Full-featured audio player demo"
+        showVolume={true}
         showPlaybackSpeed={true}
-        showSkipButtons={true}
+        showTimestamp={true}
+        showProgress={true}
+        onTimeUpdate={handleTimeUpdate}
+        onPlay={() => console.log('Audio started playing')}
+        onPause={() => console.log('Audio paused')}
+        onEnded={() => console.log('Audio playback ended')}
       />
       
-      <h3 className="text-sm font-medium text-gray-900">Compact Audio Player</h3>
+      <h3 className="text-sm font-medium text-gray-900">Minimal Audio Player</h3>
+      <p className="text-sm text-gray-600">Simplified player with essential controls only</p>
       <AudioPlayer
         src="https://www.soundjay.com/misc/sounds/bell-ringing-05.wav"
-        title="Compact Version"
-        variant="compact"
-        size="sm"
+        aria-label="Minimal audio player demo"
+        showVolume={false}
         showPlaybackSpeed={false}
+        showTimestamp={true}
+        showProgress={true}
       />
+
+      <h3 className="text-sm font-medium text-gray-900">Progress-Only Player</h3>
+      <p className="text-sm text-gray-600">Player focused on timestamp and progress tracking</p>
+      <AudioPlayer
+        src="https://www.soundjay.com/misc/sounds/bell-ringing-05.wav"
+        aria-label="Progress-focused audio player demo"
+        showVolume={false}
+        showPlaybackSpeed={false}
+        showTimestamp={true}
+        showProgress={true}
+        className="bg-blue-50 border-blue-200"
+      />
+
+      <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+        <h4 className="text-sm font-semibold text-gray-900 mb-2">Keyboard Shortcuts</h4>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-600">
+          <div><kbd className="px-2 py-1 bg-white border rounded text-xs">Space</kbd> Play/Pause</div>
+          <div><kbd className="px-2 py-1 bg-white border rounded text-xs">←</kbd> <kbd className="px-2 py-1 bg-white border rounded text-xs">→</kbd> Skip ±5s</div>
+          <div><kbd className="px-2 py-1 bg-white border rounded text-xs">↑</kbd> <kbd className="px-2 py-1 bg-white border rounded text-xs">↓</kbd> Volume ±10%</div>
+          <div><kbd className="px-2 py-1 bg-white border rounded text-xs">M</kbd> Mute/Unmute</div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,32 +1,98 @@
 import { QueryClient } from '@tanstack/react-query'
-import { handleGlobalQueryError } from './query-error-handler'
+import { processQueryError } from './query-error-handler'
 
-// Default options for all queries
-const defaultQueryOptions = {
-  staleTime: 5 * 60 * 1000, // 5 minutes
-  cacheTime: 10 * 60 * 1000, // 10 minutes
-  retry: 3,
-  refetchOnWindowFocus: false,
-  refetchOnMount: true,
-  refetchOnReconnect: true,
-  // Global error handler for queries
-  onError: handleGlobalQueryError,
-}
-
-// Default options for all mutations
-const defaultMutationOptions = {
-  retry: 1,
-  // Global error handler for mutations
-  onError: handleGlobalQueryError,
-}
-
-// Create and configure the QueryClient
 export const queryClient = new QueryClient({
   defaultOptions: {
-    queries: defaultQueryOptions,
-    mutations: defaultMutationOptions,
+    queries: {
+      // Performance optimizations
+      staleTime: 2 * 60 * 1000, // 2 minutes - data stays fresh longer
+      gcTime: 10 * 60 * 1000, // 10 minutes - keep in memory longer
+      
+      // Retry configuration
+      retry: (failureCount, error) => {
+        // Don't retry for auth errors (401, 403)
+        if (error && typeof error === 'object' && 'status' in error) {
+          const status = (error as { status: number }).status;
+          if ([401, 403, 404].includes(status)) {
+            return false;
+          }
+        }
+        // Retry up to 3 times for other errors
+        return failureCount < 3;
+      },
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+      
+      // Background refetching
+      refetchOnWindowFocus: false, // Prevent excessive refetching
+      refetchOnMount: 'always',
+      refetchOnReconnect: 'always',
+      
+      // Error handling
+      throwOnError: false,
+    },
+    mutations: {
+      // Retry failed mutations once
+      retry: 1,
+      
+      // Error handling
+      throwOnError: false,
+      
+      // Global mutation error handler
+      onError: (error) => {
+        console.error('Mutation error:', error);
+        // Process error for consistent error handling
+        processQueryError(error);
+        
+        // You can add global error notifications here
+        // For example: toast.error(processedError.message);
+      },
+    },
   },
 })
+
+// Global query error handler
+queryClient.setQueryDefaults(['projects'], {
+  staleTime: 5 * 60 * 1000, // Projects change less frequently
+  gcTime: 15 * 60 * 1000,
+});
+
+queryClient.setQueryDefaults(['bible-versions'], {
+  staleTime: 60 * 60 * 1000, // Bible versions rarely change - 1 hour
+  gcTime: 2 * 60 * 60 * 1000, // 2 hours
+});
+
+queryClient.setQueryDefaults(['language-entities'], {
+  staleTime: 60 * 60 * 1000, // Language entities rarely change - 1 hour  
+  gcTime: 2 * 60 * 60 * 1000, // 2 hours
+});
+
+queryClient.setQueryDefaults(['regions'], {
+  staleTime: 60 * 60 * 1000, // Regions rarely change - 1 hour
+  gcTime: 2 * 60 * 60 * 1000, // 2 hours
+});
+
+// Prefetch commonly used data
+export const prefetchCommonData = async () => {
+  try {
+    // Only prefetch if not already in cache
+    await Promise.allSettled([
+      queryClient.prefetchQuery({
+        queryKey: ['bible-versions'],
+        staleTime: 60 * 60 * 1000,
+      }),
+      queryClient.prefetchQuery({
+        queryKey: ['language-entities'],
+        staleTime: 60 * 60 * 1000,
+      }),
+      queryClient.prefetchQuery({
+        queryKey: ['regions'],
+        staleTime: 60 * 60 * 1000,
+      }),
+    ]);
+  } catch (error) {
+    console.warn('Failed to prefetch common data:', error);
+  }
+};
 
 // Query keys factory for consistent key generation
 export const queryKeys = {

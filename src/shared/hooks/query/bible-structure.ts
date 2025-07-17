@@ -1,5 +1,5 @@
 import { useFetchCollection, useFetchById } from './base-hooks'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { supabase } from '../../services/supabase'
 import type { TableRow, SupabaseError } from './base-hooks'
 
@@ -337,93 +337,108 @@ export function useBibleProjectDashboard(projectId: string | null) {
       if (projectError) throw projectError
       if (!project) throw new Error('Project not found')
 
-      // Get text versions for this project using language_entity_id
-      const { data: textVersions, error: textVersionsError } = await supabase
-        .from('text_versions')
-        .select('id, bible_version_id')
-        .eq('language_entity_id', project.source_language_entity_id)
+      // Get all bible versions (there's only one for now)
+      // TODO: In the future, this should be configurable per project via text_versions
+      const { data: bibleVersions, error: bibleVersionsError } = await supabase
+        .from('bible_versions')
+        .select('id')
         .order('created_at', { ascending: true })
 
-      if (textVersionsError) throw textVersionsError
+      if (bibleVersionsError) throw bibleVersionsError
       
-      // For now, use the first text version's bible version
-      // In the future, this could be made configurable
-      const bibleVersionId = textVersions?.[0]?.bible_version_id
+      // Use the first bible version
+      const bibleVersionId = bibleVersions?.[0]?.id
       if (!bibleVersionId) {
-        throw new Error('No bible version found for this project')
+        throw new Error('No bible versions found in the system')
       }
 
-      // Get books with progress
-      const { data: books, error: booksError } = await supabase
+      // Get books with chapters in a single optimized query
+      const { data: booksWithChapters, error: booksError } = await supabase
         .from('books')
-        .select('*')
+        .select(`
+          *,
+          chapters (
+            *
+          )
+        `)
         .eq('bible_version_id', bibleVersionId)
         .order('global_order', { ascending: true })
 
       if (booksError) throw booksError
 
-      // Calculate progress for each book
-      const booksWithProgress: BibleBookWithProgress[] = await Promise.all(
-        books.map(async (book) => {
-          const { data: chapters } = await supabase
-            .from('chapters')
-            .select('*')
-            .eq('book_id', book.id)
-            .order('chapter_number', { ascending: true })
+      // Get all media file coverage for this project in one query
+      const { data: allCoverage, error: coverageError } = await supabase
+        .from('media_files_verses')
+        .select(`
+          verse_id,
+          media_file_id,
+          media_files!inner (project_id),
+          verses!inner (chapter_id)
+        `)
+        .eq('media_files.project_id', projectId)
 
-          const chaptersWithStatus: ChapterWithStatus[] = await Promise.all(
-            (chapters || []).map(async (chapter) => {
-              // Get media file coverage for this chapter
-              const { data: coverage } = await supabase
-                .from('media_files_verses')
-                .select(`
-                  verse_id,
-                  media_file_id,
-                  media_files!inner (project_id),
-                  verses!inner (chapter_id)
-                `)
-                .eq('media_files.project_id', projectId)
-                .eq('verses.chapter_id', chapter.id)
+      if (coverageError) throw coverageError
 
-              const verseIds = new Set(coverage?.map(c => c.verse_id) || [])
-              const mediaFileIds = Array.from(new Set(coverage?.map(c => c.media_file_id) || []))
-              
-              const versesCovered = verseIds.size
-              const status = calculateChapterStatus(chapter.total_verses, versesCovered)
-              const progress = calculateProgress(versesCovered, chapter.total_verses)
+      // Group coverage by chapter_id for efficient lookup
+      const coverageByChapter = new Map<string, Set<string>>()
+      const mediaFilesByChapter = new Map<string, Set<string>>()
+      
+      allCoverage?.forEach(coverage => {
+        const chapterId = coverage.verses.chapter_id
+        
+        if (!coverageByChapter.has(chapterId)) {
+          coverageByChapter.set(chapterId, new Set())
+          mediaFilesByChapter.set(chapterId, new Set())
+        }
+        
+        coverageByChapter.get(chapterId)!.add(coverage.verse_id)
+        mediaFilesByChapter.get(chapterId)!.add(coverage.media_file_id)
+      })
 
-              return {
-                ...chapter,
-                status,
-                progress,
-                mediaFileIds,
-                versesCovered
-              }
-            })
-          )
-
-          // Calculate book progress
-          const totalVerses = chaptersWithStatus.reduce((sum, c) => sum + c.total_verses, 0)
-          const versesCovered = chaptersWithStatus.reduce((sum, c) => sum + c.versesCovered, 0)
+      // Calculate progress for each book efficiently
+      const booksWithProgress: BibleBookWithProgress[] = booksWithChapters.map(book => {
+        const chaptersWithStatus: ChapterWithStatus[] = (book.chapters || []).map(chapter => {
+          const verseIds = coverageByChapter.get(chapter.id) || new Set()
+          const mediaFileIds = Array.from(mediaFilesByChapter.get(chapter.id) || new Set()) as string[]
           
+          const versesCovered = verseIds.size
+          const status = calculateChapterStatus(chapter.total_verses, versesCovered)
+          const progress = calculateProgress(versesCovered, chapter.total_verses)
+
           return {
-            ...book,
-            chapters: chaptersWithStatus,
-            progress: calculateProgress(versesCovered, totalVerses),
-            totalChapters: chaptersWithStatus.length,
-            completedChapters: chaptersWithStatus.filter(c => c.status === 'complete').length,
-            inProgressChapters: chaptersWithStatus.filter(c => c.status === 'in_progress').length,
-            notStartedChapters: chaptersWithStatus.filter(c => c.status === 'not_started').length
+            ...chapter,
+            status,
+            progress,
+            mediaFileIds,
+            versesCovered
           }
         })
-      )
 
-      // Calculate overall project progress
+        // Calculate book progress
+        const totalChapters = chaptersWithStatus.length
+        const completedChapters = chaptersWithStatus.filter(c => c.status === 'complete').length
+        const inProgressChapters = chaptersWithStatus.filter(c => c.status === 'in_progress').length
+        const notStartedChapters = chaptersWithStatus.filter(c => c.status === 'not_started').length
+        const totalVerses = chaptersWithStatus.reduce((sum, c) => sum + c.total_verses, 0)
+        const versesCovered = chaptersWithStatus.reduce((sum, c) => sum + c.versesCovered, 0)
+        const bookProgress = calculateProgress(versesCovered, totalVerses)
+
+        return {
+          ...book,
+          chapters: chaptersWithStatus,
+          progress: bookProgress,
+          totalChapters,
+          completedChapters,
+          inProgressChapters,
+          notStartedChapters
+        }
+      })
+
+      // Calculate overall progress
       const totalBooks = booksWithProgress.length
       const completedBooks = booksWithProgress.filter(b => b.progress === 100).length
       const inProgressBooks = booksWithProgress.filter(b => b.progress > 0 && b.progress < 100).length
       const notStartedBooks = booksWithProgress.filter(b => b.progress === 0).length
-      
       const totalVerses = booksWithProgress.reduce((sum, book) => 
         sum + book.chapters.reduce((chapterSum, chapter) => chapterSum + chapter.total_verses, 0), 0
       )
@@ -433,7 +448,7 @@ export function useBibleProjectDashboard(projectId: string | null) {
       const overallProgress = calculateProgress(versesCovered, totalVerses)
 
       return {
-        projectId,
+        projectId: project.id,
         books: booksWithProgress,
         totalBooks,
         overallProgress,
@@ -443,29 +458,116 @@ export function useBibleProjectDashboard(projectId: string | null) {
       }
     },
     enabled: !!projectId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes cache time
   })
 }
 
 /**
  * Hook to get real-time updates for Bible project dashboard
- * Sets up Supabase subscriptions for media_files and media_files_verses changes
+ * DEPRECATED: Use regular useBibleProjectDashboard hook instead
+ * This polling approach is inefficient and should be replaced with websockets if real-time updates are needed
  */
 export function useBibleProjectDashboardRealtime(projectId: string | null) {
-  const queryClient = useQueryClient()
+  console.warn('useBibleProjectDashboardRealtime is deprecated. Use useBibleProjectDashboard instead.');
+  return useBibleProjectDashboard(projectId);
+} 
+
+/**
+ * Mutation for bulk uploading verse texts via CSV
+ */
+export function useBulkTextUpload() {
+  const queryClient = useQueryClient();
   
-  return useQuery<BibleProjectDashboard | null, SupabaseError>({
-    queryKey: ['bible-project-dashboard-realtime', projectId],
-    queryFn: async () => {
-      if (!projectId) return null
-      
-      // Re-use the same query logic as the main dashboard
-      const dashboard = await queryClient.getQueryData(['bible-project-dashboard', projectId])
-      return dashboard as BibleProjectDashboard | null
+  return useMutation({
+    mutationFn: async ({ 
+      textVersionId, 
+      csvData 
+    }: { 
+      textVersionId: string; 
+      csvData: Array<{
+        book: string;
+        chapter: number;
+        verse: number;
+        text: string;
+      }>; 
+    }) => {
+      // Transform CSV data to match database structure
+      const verseTexts = csvData.map(row => ({
+        text_version_id: textVersionId,
+        verse_id: row.book, // This would need to be looked up from verses table
+        verse_text: row.text,
+        created_at: new Date().toISOString()
+      }));
+
+      const { data, error } = await supabase
+        .from('verse_texts')
+        .upsert(verseTexts, { onConflict: 'text_version_id,book_id,chapter,verse' })
+        .select();
+
+      if (error) throw error;
+      return data;
     },
-    enabled: !!projectId,
-    refetchInterval: 5000, // Refresh every 5 seconds
-    refetchOnWindowFocus: true,
-    staleTime: 2000, // Consider data stale after 2 seconds
-  })
+    onSuccess: () => {
+      // Invalidate verse texts queries
+      queryClient.invalidateQueries({ queryKey: ['verse-texts'] });
+      queryClient.invalidateQueries({ queryKey: ['verse-texts-by-project'] });
+    },
+  });
+}
+
+/**
+ * Mutation for updating individual verse text
+ */
+export function useUpdateVerseText() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ 
+      id, 
+      text 
+    }: { 
+      id: string; 
+      text: string; 
+    }) => {
+      const { data, error } = await supabase
+        .from('verse_texts')
+        .update({ text, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      // Invalidate verse texts queries
+      queryClient.invalidateQueries({ queryKey: ['verse-texts'] });
+      queryClient.invalidateQueries({ queryKey: ['verse-texts-by-project'] });
+    },
+  });
+}
+
+/**
+ * Mutation for deleting verse texts
+ */
+export function useDeleteVerseTexts() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ ids }: { ids: string[] }) => {
+      const { error } = await supabase
+        .from('verse_texts')
+        .delete()
+        .in('id', ids);
+
+      if (error) throw error;
+      return { success: true, deletedCount: ids.length };
+    },
+    onSuccess: () => {
+      // Invalidate verse texts queries
+      queryClient.invalidateQueries({ queryKey: ['verse-texts'] });
+      queryClient.invalidateQueries({ queryKey: ['verse-texts-by-project'] });
+    },
+  });
 } 

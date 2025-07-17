@@ -1,6 +1,8 @@
 export * from './Button'
 export * from './Card'
 export * from './Checkbox'
+export * from './CircularProgress'
+export * from './DataTable'
 export * from './Dialog'
 export * from './Form'
 export * from './Input'
@@ -9,6 +11,7 @@ export * from './Radio'
 export * from './Select'
 export * from './Sidebar'
 export * from './LoadingSpinner'
+export * from './Slider'
 
 // Navigation and Disclosure Components
 export * from './Tabs'

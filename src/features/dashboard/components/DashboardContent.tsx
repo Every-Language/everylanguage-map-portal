@@ -25,7 +25,7 @@ export const DashboardContent: React.FC = () => {
       </div>
       
       <ProjectSelector
-        selectedProjectId={selectedProject?.id}
+        selectedProject={selectedProject}
         onProjectSelect={setSelectedProject}
         className="max-w-lg"
       />

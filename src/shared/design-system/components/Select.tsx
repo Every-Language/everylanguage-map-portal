@@ -6,13 +6,17 @@ import { cn } from '../utils';
 const selectTriggerVariants = cva(
   [
     'flex h-10 w-full items-center justify-between',
-    'rounded-lg border border-neutral-200 bg-white px-3 py-2',
+    'rounded-lg border bg-white px-3 py-2',
     'text-sm placeholder:text-neutral-500',
     'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
     'disabled:cursor-not-allowed disabled:opacity-50',
     'data-[state=open]:border-primary-500',
     'data-[placeholder]:text-neutral-500',
     'transition-colors duration-200',
+    // Dark mode support
+    'dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-100',
+    'dark:placeholder:text-neutral-400 dark:data-[placeholder]:text-neutral-400',
+    'dark:focus:ring-offset-neutral-800',
   ],
   {
     variants: {
@@ -21,11 +25,18 @@ const selectTriggerVariants = cva(
           'border-neutral-200 bg-white',
           'hover:border-neutral-300',
           'focus:border-primary-500',
+          // Dark mode
+          'dark:border-neutral-700 dark:bg-neutral-800',
+          'dark:hover:border-neutral-600',
+          'dark:focus:border-primary-400',
         ],
         filled: [
           'border-transparent bg-neutral-100',
           'hover:bg-neutral-50',
           'focus:bg-white focus:border-primary-500',
+          // Dark mode
+          'dark:bg-neutral-700 dark:hover:bg-neutral-600',
+          'dark:focus:bg-neutral-800 dark:focus:border-primary-400',
         ],
       },
       size: {
@@ -42,9 +53,11 @@ const selectTriggerVariants = cva(
 );
 
 const selectContentVariants = cva([
-  'relative z-50 min-w-[8rem] overflow-hidden rounded-lg border border-neutral-200',
+  'relative z-50 min-w-[8rem] max-h-[300px] overflow-hidden rounded-lg border',
   'bg-white text-neutral-900 shadow-lg',
   'animate-in fade-in-0 zoom-in-95 duration-200',
+  // Dark mode support
+  'dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-100',
 ]);
 
 const selectItemVariants = cva([
@@ -53,6 +66,9 @@ const selectItemVariants = cva([
   'focus:bg-primary-50 focus:text-primary-900',
   'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
   'data-[state=checked]:bg-primary-100 data-[state=checked]:text-primary-900',
+  // Dark mode support
+  'dark:focus:bg-primary-900/20 dark:focus:text-primary-100',
+  'dark:data-[state=checked]:bg-primary-900/30 dark:data-[state=checked]:text-primary-100',
 ]);
 
 // Main Select component
@@ -98,7 +114,7 @@ export const Select = React.forwardRef<
       {label && (
         <label
           htmlFor={selectId}
-          className="block text-sm font-medium text-neutral-700"
+          className="block text-sm font-medium text-neutral-700 dark:text-neutral-300"
         >
           {label}
           {required && <span className="text-error-500 ml-1">*</span>}
@@ -150,7 +166,7 @@ export const Select = React.forwardRef<
             position="popper"
             sideOffset={5}
           >
-            <SelectPrimitive.Viewport className="p-1">
+            <SelectPrimitive.Viewport className="p-1 max-h-[280px] overflow-y-auto">
               {children}
             </SelectPrimitive.Viewport>
           </SelectPrimitive.Content>
@@ -158,13 +174,13 @@ export const Select = React.forwardRef<
       </SelectPrimitive.Root>
       
       {error && (
-        <p id={`${selectId}-error`} className="text-sm text-error-600" role="alert">
+        <p id={`${selectId}-error`} className="text-sm text-error-600 dark:text-error-400" role="alert">
           {error}
         </p>
       )}
       
       {helperText && !error && (
-        <p id={`${selectId}-helper`} className="text-sm text-neutral-500">
+        <p id={`${selectId}-helper`} className="text-sm text-neutral-500 dark:text-neutral-400">
           {helperText}
         </p>
       )}
@@ -225,7 +241,7 @@ export const SelectLabel = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.Label
     ref={ref}
-    className={cn('px-2 py-1.5 text-sm font-semibold text-neutral-900', className)}
+    className={cn('px-2 py-1.5 text-sm font-semibold text-neutral-900 dark:text-neutral-100', className)}
     {...props}
   />
 ));
@@ -245,3 +261,248 @@ export const SelectSeparator = React.forwardRef<
 ));
 
 SelectSeparator.displayName = 'SelectSeparator'; 
+
+// Searchable Select component for long lists
+export interface SearchableSelectProps {
+  value?: string;
+  onValueChange?: (value: string) => void;
+  placeholder?: string;
+  searchPlaceholder?: string;
+  disabled?: boolean;
+  label?: string;
+  error?: string;
+  helperText?: string;
+  required?: boolean;
+  className?: string;
+  options: Array<{ value: string; label: string; }>;
+}
+
+export const SearchableSelect = React.forwardRef<
+  HTMLButtonElement,
+  SearchableSelectProps
+>(({ 
+  value, 
+  onValueChange, 
+  placeholder = "Select option...",
+  searchPlaceholder = "Search...", 
+  disabled, 
+  label, 
+  error, 
+  helperText, 
+  required, 
+  className,
+  options = []
+}, ref) => {
+  const [open, setOpen] = React.useState(false);
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+  const focusTimeoutRef = React.useRef<NodeJS.Timeout>();
+  const selectId = React.useId();
+  const hasError = !!error;
+
+  const filteredOptions = React.useMemo(() => {
+    if (!searchTerm) return options;
+    return options.filter(option => 
+      option.label.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [options, searchTerm]);
+
+  const selectedOption = options.find(option => option.value === value);
+
+  // Focus search input when dropdown opens with better timing
+  React.useEffect(() => {
+    if (open && searchInputRef.current) {
+      // Clear any existing timeout
+      if (focusTimeoutRef.current) {
+        clearTimeout(focusTimeoutRef.current);
+      }
+      
+      // Use a longer timeout to ensure Radix UI has finished its setup
+      focusTimeoutRef.current = setTimeout(() => {
+        if (searchInputRef.current && open) {
+          searchInputRef.current.focus();
+          // Ensure cursor is at the end if there's any text
+          const input = searchInputRef.current;
+          input.setSelectionRange(input.value.length, input.value.length);
+        }
+      }, 100);
+    }
+
+    return () => {
+      if (focusTimeoutRef.current) {
+        clearTimeout(focusTimeoutRef.current);
+      }
+    };
+  }, [open]);
+
+  const handleSelect = (selectedValue: string) => {
+    onValueChange?.(selectedValue);
+    setOpen(false);
+    setSearchTerm('');
+  };
+
+  const handleOpenChange = (newOpen: boolean) => {
+    setOpen(newOpen);
+    if (!newOpen) {
+      setSearchTerm('');
+      if (focusTimeoutRef.current) {
+        clearTimeout(focusTimeoutRef.current);
+      }
+    }
+  };
+
+  const handleSearchChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+  }, []);
+
+  const handleInputKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Prevent the select from closing when typing
+    e.stopPropagation();
+    
+    // Handle Enter key to select first option
+    if (e.key === 'Enter' && filteredOptions.length > 0) {
+      e.preventDefault();
+      handleSelect(filteredOptions[0].value);
+    }
+    
+    // Handle Escape to close
+    if (e.key === 'Escape') {
+      setOpen(false);
+    }
+  }, [filteredOptions, handleSelect]);
+
+  const handleInputFocus = React.useCallback(() => {
+    // Ensure the dropdown stays open when input is focused
+    if (!open) {
+      setOpen(true);
+    }
+  }, [open]);
+
+  return (
+    <div className="space-y-2">
+      {label && (
+        <label
+          htmlFor={selectId}
+          className="block text-sm font-medium text-neutral-700 dark:text-neutral-300"
+        >
+          {label}
+          {required && <span className="text-error-500 ml-1">*</span>}
+        </label>
+      )}
+      
+      <SelectPrimitive.Root
+        value={value}
+        onValueChange={handleSelect}
+        disabled={disabled}
+        open={open}
+        onOpenChange={handleOpenChange}
+      >
+        <SelectPrimitive.Trigger
+          ref={ref}
+          id={selectId}
+          className={cn(
+            selectTriggerVariants({ variant: 'default', size: 'md' }),
+            hasError && 'border-error-500 focus:ring-error-500',
+            className
+          )}
+          aria-invalid={hasError}
+          aria-describedby={
+            error ? `${selectId}-error` : helperText ? `${selectId}-helper` : undefined
+          }
+        >
+          <SelectPrimitive.Value>
+            {selectedOption?.label || placeholder}
+          </SelectPrimitive.Value>
+          <SelectPrimitive.Icon>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 15 15"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4 w-4 opacity-50"
+            >
+              <path
+                d="M3.13523 6.15803C3.3241 5.95657 3.64052 5.94637 3.84197 6.13523L7.5 9.56464L11.158 6.13523C11.3595 5.94637 11.6759 5.95657 11.8648 6.15803C12.0536 6.35949 12.0434 6.67591 11.842 6.86477L7.84197 10.6148C7.64964 10.7951 7.35036 10.7951 7.15803 10.6148L3.15803 6.86477C2.95657 6.67591 2.94637 6.35949 3.13523 6.15803Z"
+                fill="currentColor"
+                fillRule="evenodd"
+                clipRule="evenodd"
+              />
+            </svg>
+          </SelectPrimitive.Icon>
+        </SelectPrimitive.Trigger>
+        
+        <SelectPrimitive.Portal>
+          <SelectPrimitive.Content
+            className={cn(selectContentVariants())}
+            position="popper"
+            sideOffset={5}
+          >
+            <div className="p-2 border-b border-neutral-200 dark:border-neutral-700">
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder={searchPlaceholder}
+                value={searchTerm}
+                onChange={handleSearchChange}
+                onKeyDown={handleInputKeyDown}
+                onFocus={handleInputFocus}
+                className="w-full px-3 py-2 text-sm border rounded-md border-neutral-200 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-500 dark:placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              />
+            </div>
+            <SelectPrimitive.Viewport className="p-1 max-h-[240px] overflow-y-auto">
+              {filteredOptions.length === 0 ? (
+                <div className="px-2 py-3 text-sm text-neutral-500 dark:text-neutral-400 text-center">
+                  No results found
+                </div>
+              ) : (
+                filteredOptions.map((option) => (
+                  <SelectPrimitive.Item
+                    key={option.value}
+                    value={option.value}
+                    className={cn(selectItemVariants())}
+                  >
+                    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+                      <SelectPrimitive.ItemIndicator>
+                        <svg
+                          width="15"
+                          height="15"
+                          viewBox="0 0 15 15"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4"
+                        >
+                          <path
+                            d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z"
+                            fill="currentColor"
+                            fillRule="evenodd"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </SelectPrimitive.ItemIndicator>
+                    </span>
+                    <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
+                  </SelectPrimitive.Item>
+                ))
+              )}
+            </SelectPrimitive.Viewport>
+          </SelectPrimitive.Content>
+        </SelectPrimitive.Portal>
+      </SelectPrimitive.Root>
+      
+      {error && (
+        <p id={`${selectId}-error`} className="text-sm text-error-600 dark:text-error-400" role="alert">
+          {error}
+        </p>
+      )}
+      
+      {helperText && !error && (
+        <p id={`${selectId}-helper`} className="text-sm text-neutral-500 dark:text-neutral-400">
+          {helperText}
+        </p>
+      )}
+    </div>
+  );
+});
+
+SearchableSelect.displayName = 'SearchableSelect'; 
