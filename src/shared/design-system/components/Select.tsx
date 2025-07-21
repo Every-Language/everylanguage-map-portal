@@ -296,87 +296,104 @@ export const SearchableSelect = React.forwardRef<
   const [open, setOpen] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
   const searchInputRef = React.useRef<HTMLInputElement>(null);
-  const focusTimeoutRef = React.useRef<NodeJS.Timeout>();
   const selectId = React.useId();
   const hasError = !!error;
 
   const filteredOptions = React.useMemo(() => {
     if (!searchTerm) return options;
-    return options.filter(option => 
-      option.label.toLowerCase().includes(searchTerm.toLowerCase())
+    
+    const searchLower = searchTerm.toLowerCase();
+    const filtered = options.filter(option => 
+      option.label.toLowerCase().includes(searchLower)
     );
-  }, [options, searchTerm]);
+    
+    // Always include the currently selected option to prevent SelectPrimitive from losing track
+    // but only if it's not already in the filtered results
+    const selectedOption = value ? options.find(option => option.value === value) : null;
+    const hasSelectedInFiltered = selectedOption && filtered.find(option => option.value === value);
+    
+    if (selectedOption && !hasSelectedInFiltered) {
+      // Add the selected option to the end so search results come first
+      filtered.push(selectedOption);
+    }
+    
+    // Sort filtered results to prioritize better matches
+    return filtered.sort((a, b) => {
+      const aLabel = a.label.toLowerCase();
+      const bLabel = b.label.toLowerCase();
+      
+      // If one starts with the search term, prioritize it
+      const aStartsWith = aLabel.startsWith(searchLower);
+      const bStartsWith = bLabel.startsWith(searchLower);
+      
+      if (aStartsWith && !bStartsWith) return -1;
+      if (!aStartsWith && bStartsWith) return 1;
+      
+      // If both or neither start with search term, sort alphabetically
+      return aLabel.localeCompare(bLabel);
+    });
+  }, [options, searchTerm, value]);
 
   const selectedOption = options.find(option => option.value === value);
 
-  // Focus search input when dropdown opens with better timing
+  // Focus search input when dropdown opens
   React.useEffect(() => {
     if (open && searchInputRef.current) {
-      // Clear any existing timeout
-      if (focusTimeoutRef.current) {
-        clearTimeout(focusTimeoutRef.current);
-      }
-      
-      // Use a longer timeout to ensure Radix UI has finished its setup
-      focusTimeoutRef.current = setTimeout(() => {
+      // Use requestAnimationFrame to ensure DOM is ready
+      requestAnimationFrame(() => {
         if (searchInputRef.current && open) {
           searchInputRef.current.focus();
-          // Ensure cursor is at the end if there's any text
-          const input = searchInputRef.current;
-          input.setSelectionRange(input.value.length, input.value.length);
         }
-      }, 100);
+      });
     }
-
-    return () => {
-      if (focusTimeoutRef.current) {
-        clearTimeout(focusTimeoutRef.current);
-      }
-    };
   }, [open]);
 
-  const handleSelect = (selectedValue: string) => {
+  const handleSelect = React.useCallback((selectedValue: string) => {
     onValueChange?.(selectedValue);
     setOpen(false);
     setSearchTerm('');
-  };
+  }, [onValueChange]);
 
-  const handleOpenChange = (newOpen: boolean) => {
+  const handleOpenChange = React.useCallback((newOpen: boolean) => {
     setOpen(newOpen);
     if (!newOpen) {
       setSearchTerm('');
-      if (focusTimeoutRef.current) {
-        clearTimeout(focusTimeoutRef.current);
-      }
     }
-  };
+  }, []);
 
   const handleSearchChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
   }, []);
 
   const handleInputKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Prevent the select from closing when typing
+    // Prevent event from bubbling up to SelectPrimitive
     e.stopPropagation();
     
-    // Handle Enter key to select first option
     if (e.key === 'Enter' && filteredOptions.length > 0) {
       e.preventDefault();
       handleSelect(filteredOptions[0].value);
-    }
-    
-    // Handle Escape to close
-    if (e.key === 'Escape') {
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
       setOpen(false);
+    } else if (e.key === 'ArrowDown' && filteredOptions.length > 0) {
+      e.preventDefault();
+      // Focus first option in the list
+      const firstOption = document.querySelector('[data-radix-collection-item]') as HTMLElement;
+      if (firstOption) {
+        firstOption.focus();
+      }
     }
   }, [filteredOptions, handleSelect]);
 
-  const handleInputFocus = React.useCallback(() => {
-    // Ensure the dropdown stays open when input is focused
-    if (!open) {
-      setOpen(true);
-    }
-  }, [open]);
+  // Prevent clicks on search input from closing the dropdown
+  const handleInputClick = React.useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+  }, []);
+
+  // Prevent mousedown on search input from closing dropdown
+  const handleInputMouseDown = React.useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+  }, []);
 
   return (
     <div className="space-y-2">
@@ -437,6 +454,10 @@ export const SearchableSelect = React.forwardRef<
             className={cn(selectContentVariants())}
             position="popper"
             sideOffset={5}
+            onCloseAutoFocus={(e) => {
+              // Prevent auto-focus behavior that might interfere
+              e.preventDefault();
+            }}
           >
             <div className="p-2 border-b border-neutral-200 dark:border-neutral-700">
               <input
@@ -446,8 +467,10 @@ export const SearchableSelect = React.forwardRef<
                 value={searchTerm}
                 onChange={handleSearchChange}
                 onKeyDown={handleInputKeyDown}
-                onFocus={handleInputFocus}
+                onClick={handleInputClick}
+                onMouseDown={handleInputMouseDown}
                 className="w-full px-3 py-2 text-sm border rounded-md border-neutral-200 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-500 dark:placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                autoComplete="off"
               />
             </div>
             <SelectPrimitive.Viewport className="p-1 max-h-[240px] overflow-y-auto">
@@ -461,6 +484,12 @@ export const SearchableSelect = React.forwardRef<
                     key={option.value}
                     value={option.value}
                     className={cn(selectItemVariants())}
+                    onKeyDown={(e) => {
+                      if (e.key === 'ArrowUp' && e.currentTarget === e.currentTarget.parentElement?.firstElementChild) {
+                        e.preventDefault();
+                        searchInputRef.current?.focus();
+                      }
+                    }}
                   >
                     <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
                       <SelectPrimitive.ItemIndicator>

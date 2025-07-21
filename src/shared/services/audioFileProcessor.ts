@@ -65,10 +65,8 @@ export class AudioFileProcessor {
       uploadStatus: 'pending'
     };
     
-    // Try to auto-populate book/chapter from filename
-    if (filenameParseResult.detectedBookOsis) {
-      processedFile.selectedBookId = filenameParseResult.detectedBookOsis;
-    }
+    // Note: Book/chapter/verse selection is now handled by BookChapterVerseSelector
+    // using the detected values from filenameParseResult
     
     return processedFile;
   }
@@ -185,7 +183,7 @@ export class AudioFileProcessor {
           validationErrors: [`Processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`],
           isValid: false,
           uploadProgress: 0,
-          uploadStatus: 'error',
+          uploadStatus: 'error' as const,
           uploadError: error instanceof Error ? error.message : 'Unknown error'
         };
       }

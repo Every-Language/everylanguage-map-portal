@@ -13,6 +13,7 @@ import { LoadingSpinner } from './shared/design-system';
 const BibleProgressPage = React.lazy(() => import('./app/pages/BibleProgressPage').then(module => ({ default: module.BibleProgressPage })));
 const AudioFilesPage = React.lazy(() => import('./app/pages/AudioFilesPage').then(module => ({ default: module.AudioFilesPage })));
 const BibleTextPage = React.lazy(() => import('./app/pages/BibleTextPage').then(module => ({ default: module.BibleTextPage })));
+const ImagesPage = React.lazy(() => import('./app/pages/ImagesPage').then(module => ({ default: module.ImagesPage })));
 const CommunityCheckPage = React.lazy(() => import('./app/pages/CommunityCheckPage').then(module => ({ default: module.CommunityCheckPage })));
 const UsersPage = React.lazy(() => import('./app/pages/UsersPage').then(module => ({ default: module.UsersPage })));
 const AudioUploadPage = React.lazy(() => import('./features/upload/pages/AudioUploadPage').then(module => ({ default: module.AudioUploadPage })));
@@ -52,6 +53,7 @@ function App() {
                 <Route path="/bible-progress" element={<ProtectedLayoutRoute><Suspense fallback={<PageLoadingFallback />}><BibleProgressPage /></Suspense></ProtectedLayoutRoute>} />
                 <Route path="/audio-files" element={<ProtectedLayoutRoute><Suspense fallback={<PageLoadingFallback />}><AudioFilesPage /></Suspense></ProtectedLayoutRoute>} />
                 <Route path="/bible-text" element={<ProtectedLayoutRoute><Suspense fallback={<PageLoadingFallback />}><BibleTextPage /></Suspense></ProtectedLayoutRoute>} />
+                <Route path="/images" element={<ProtectedLayoutRoute><Suspense fallback={<PageLoadingFallback />}><ImagesPage /></Suspense></ProtectedLayoutRoute>} />
                 <Route path="/community-check" element={<ProtectedLayoutRoute><Suspense fallback={<PageLoadingFallback />}><CommunityCheckPage /></Suspense></ProtectedLayoutRoute>} />
                 <Route path="/users" element={<ProtectedLayoutRoute><Suspense fallback={<PageLoadingFallback />}><UsersPage /></Suspense></ProtectedLayoutRoute>} />
                 

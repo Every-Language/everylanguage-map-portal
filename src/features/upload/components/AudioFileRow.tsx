@@ -135,6 +135,8 @@ export function AudioFileRow({
           disabled={file.uploadStatus === 'uploading'}
           detectedBook={file.filenameParseResult.detectedBook}
           detectedChapter={file.filenameParseResult.detectedChapter}
+          detectedStartVerse={file.filenameParseResult.detectedStartVerse}
+          detectedEndVerse={file.filenameParseResult.detectedEndVerse}
         />
       </div>
 
@@ -146,7 +148,7 @@ export function AudioFileRow({
           </h5>
           <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg border">
             <AudioPlayer
-              src={URL.createObjectURL(file)}
+              src={URL.createObjectURL(file.file)}
               showPlaybackSpeed={true}
               showTimestamp={true}
               aria-label={`Audio player for ${file.name}`}

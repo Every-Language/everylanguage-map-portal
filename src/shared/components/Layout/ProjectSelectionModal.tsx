@@ -18,7 +18,8 @@ import { formatDistanceToNow } from 'date-fns';
 import type { Project } from '../../stores/types';
 
 interface ProjectWithMetadata extends Project {
-  language_name: string;
+  target_language_name: string;
+  source_language_name: string;
   progress: number;
   member_count: number;
 }
@@ -42,7 +43,6 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
   // Fetch projects and language entities
   const { data: projects = [], isLoading, error } = useProjects();
   const { data: languageEntities = [] } = useLanguageEntities();
-
 
 
   // Load recent projects from localStorage
@@ -91,7 +91,8 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
   const projectsWithMetadata = useMemo<ProjectWithMetadata[]>(() => {
     return projects.map(project => ({
       ...project,
-      language_name: languageLookup.get(project.target_language_entity_id) || 'Unknown',
+      target_language_name: languageLookup.get(project.target_language_entity_id) || 'Unknown',
+      source_language_name: languageLookup.get(project.source_language_entity_id) || 'Unknown',
       progress: 0, // You can calculate this based on your dashboard data
       member_count: 1 // Placeholder - adjust based on your data structure
     }));
@@ -101,7 +102,8 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
   const filteredProjects = useMemo(() => {
     const filtered = projectsWithMetadata.filter(project =>
       project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.language_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      project.target_language_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      project.source_language_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (project.description && project.description.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
@@ -174,7 +176,7 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
                   <Card
                     key={project.id}
                     className={`cursor-pointer transition-all hover:shadow-md ${
-                      isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''
+                      isSelected ? 'bg-blue-50/50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700' : 'hover:border-neutral-300 dark:hover:border-neutral-600'
                     }`}
                     onClick={() => handleProjectSelect(project)}
                   >
@@ -197,9 +199,11 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
                               </div>
                             )}
                           </div>
-                          <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-                            Target Language: {project.language_name}
-                          </p>
+                          <div className="space-y-1 mt-1">
+                            <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                              Source: {project.source_language_name} → Target: {project.target_language_name}
+                            </p>
+                          </div>
                           {project.description && (
                             <p className="text-sm text-neutral-500 dark:text-neutral-500 mt-1 line-clamp-2">
                               {project.description}

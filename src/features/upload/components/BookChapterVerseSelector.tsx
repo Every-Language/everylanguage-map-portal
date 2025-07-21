@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Select, SelectItem } from '../../../shared/design-system/components';
 import { useBooksByBibleVersion, useChaptersByBook, useVersesByChapter } from '../../../shared/hooks/query/bible-structure';
 import { useQuery } from '@tanstack/react-query';
@@ -15,6 +15,11 @@ interface BookChapterVerseSelectorProps {
   onStartVerseChange: (verseId: string) => void;
   onEndVerseChange: (verseId: string) => void;
   disabled?: boolean;
+  // Add props for detected values from filename parsing
+  detectedBook?: string;
+  detectedChapter?: number;
+  detectedStartVerse?: number;
+  detectedEndVerse?: number;
 }
 
 export function BookChapterVerseSelector({
@@ -27,7 +32,12 @@ export function BookChapterVerseSelector({
   onChapterChange,
   onStartVerseChange,
   onEndVerseChange,
-  disabled = false
+  disabled = false,
+  // Add props for detected values from filename parsing
+  detectedBook,
+  detectedChapter,
+  detectedStartVerse,
+  detectedEndVerse
 }: BookChapterVerseSelectorProps) {
   // Get the first available bible version as fallback (removing text_versions query)
   const { data: bibleVersionId, isLoading: loadingBibleVersion } = useQuery({
@@ -105,6 +115,53 @@ export function BookChapterVerseSelector({
   const availableEndVerses = selectedStartVerseId 
     ? verses.slice(verses.findIndex(v => v.id === selectedStartVerseId))
     : verses;
+
+  // Auto-populate selections from detected values when data is loaded
+  useEffect(() => {
+    // Auto-select book if detected and not already selected
+    if (detectedBook && !selectedBookId && books.length > 0) {
+      const matchingBook = books.find(book => 
+        book.name.toLowerCase() === detectedBook.toLowerCase()
+      );
+      if (matchingBook) {
+        handleBookChange(matchingBook.id);
+      }
+    }
+  }, [detectedBook, selectedBookId, books]);
+
+  useEffect(() => {
+    // Auto-select chapter if detected and not already selected
+    if (detectedChapter && selectedBookId && !selectedChapterId && chapters.length > 0) {
+      const matchingChapter = chapters.find(chapter => 
+        chapter.chapter_number === detectedChapter
+      );
+      if (matchingChapter) {
+        handleChapterChange(matchingChapter.id);
+      }
+    }
+  }, [detectedChapter, selectedBookId, selectedChapterId, chapters]);
+
+  useEffect(() => {
+    // Auto-select verses if detected and not already selected
+    if (detectedStartVerse && selectedChapterId && !selectedStartVerseId && verses.length > 0) {
+      const matchingStartVerse = verses.find(verse => 
+        verse.verse_number === detectedStartVerse
+      );
+      if (matchingStartVerse) {
+        handleStartVerseChange(matchingStartVerse.id);
+
+        // Also set end verse if detected
+        if (detectedEndVerse && !selectedEndVerseId) {
+          const matchingEndVerse = verses.find(verse => 
+            verse.verse_number === detectedEndVerse
+          );
+          if (matchingEndVerse) {
+            handleEndVerseChange(matchingEndVerse.id);
+          }
+        }
+      }
+    }
+  }, [detectedStartVerse, detectedEndVerse, selectedChapterId, selectedStartVerseId, selectedEndVerseId, verses]);
 
   const isLoading = loadingBibleVersion || loadingBooks || loadingChapters || loadingVerses;
 

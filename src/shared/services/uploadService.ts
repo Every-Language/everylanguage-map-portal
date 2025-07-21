@@ -69,6 +69,16 @@ export class UploadService {
 
       // Create FormData with individual fields (matching edge function expectations)
       const formData = new FormData();
+      
+      // Debug: Log file details before sending
+      console.log('🔍 FRONTEND DEBUG: File details being sent:', {
+        fileName: file.name,
+        fileSize: file.file.size,
+        fileType: file.file.type,
+        lastModified: file.file.lastModified,
+        isFileObject: file.file instanceof File
+      });
+      
       formData.append('file', file.file); // Use the actual File object from the processed file
       
       // Add individual fields that the edge function expects

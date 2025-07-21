@@ -280,48 +280,7 @@ export const BibleTextPage: React.FC = () => {
         </Button>
       </div>
 
-      {/* Bulk Actions Bar */}
-      {selectedTexts.length > 0 && (
-        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-          <CardContent className="py-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                  {selectedTexts.length} verse text{selectedTexts.length !== 1 ? 's' : ''} selected
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSelectedTexts([])}
-                  className="text-blue-700 border-blue-300 hover:bg-blue-100 dark:text-blue-300 dark:border-blue-600 dark:hover:bg-blue-800"
-                >
-                  Clear Selection
-                </Button>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-blue-700 dark:text-blue-300">Change publish status:</span>
-                <Select 
-                  value="bulk-action" 
-                  onValueChange={(value) => {
-                    if (value !== 'bulk-action') {
-                      updatePublishStatusMutation.mutate({
-                        verseTextIds: selectedTexts,
-                        publishStatus: value as PublishStatus
-                      });
-                      setSelectedTexts([]);
-                    }
-                  }}
-                >
-                  <SelectItem value="bulk-action">Change Status</SelectItem>
-                  <SelectItem value="pending">Set to Pending</SelectItem>
-                  <SelectItem value="published">Set to Published</SelectItem>
-                  <SelectItem value="archived">Set to Archived</SelectItem>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+
 
       {/* Filters */}
       <Card>
@@ -417,7 +376,7 @@ export const BibleTextPage: React.FC = () => {
             <div className="space-y-4 relative">
               {/* Floating Bulk Operations */}
               {selectedTexts.length > 0 && (
-                <div className="fixed top-4 right-4 z-50 bg-blue-50 dark:bg-blue-900/50 border border-blue-200 dark:border-blue-700 rounded-lg p-3 shadow-lg">
+                <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 bg-blue-50 dark:bg-blue-900/90 border border-blue-200 dark:border-blue-700 rounded-full px-4 py-3 shadow-lg backdrop-blur-sm">
                   <div className="flex items-center space-x-3">
                     <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
                       {selectedTexts.length} verse text{selectedTexts.length !== 1 ? 's' : ''} selected

@@ -15,7 +15,8 @@ import { AudioFileRow } from './AudioFileRow';
 import { useToast } from '../../../shared/design-system/hooks/useToast';
 import { useSelectedProject } from '../../dashboard/hooks/useSelectedProject';
 import { AudioFileProcessor, type ProcessedAudioFile } from '../../../shared/services/audioFileProcessor';
-import { UploadService } from '../../../shared/services/uploadService';
+import { BulkUploadManager, createBulkUploadFiles } from '../../../shared/services/bulkUploadService';
+import { supabase } from '../../../shared/services/supabase';
 import { PlusIcon } from '@heroicons/react/24/outline';
 
 // Audio file types supported
@@ -51,7 +52,6 @@ export function AudioUploadModal({
   
   const { toast } = useToast();
   const audioProcessor = useRef(new AudioFileProcessor()).current;
-  const uploadService = useRef(new UploadService()).current;
 
   // Handle file drop/selection
   const handleFilesChange = useCallback(async (files: File[]) => {
@@ -124,11 +124,24 @@ export function AudioUploadModal({
     }
   }, [currentlyPlayingId]);
 
-  // Handle upload
+  // Handle bulk upload - NEW IMPLEMENTATION
   const handleUpload = useCallback(async () => {
-    if (!selectedProject) return;
+    if (!selectedProject) {
+      toast({
+        title: 'No project selected',
+        description: 'Please select a project before uploading files',
+        variant: 'error'
+      });
+      return;
+    }
 
-    const validFiles = audioFiles.filter(file => uploadService.isFileValidForUpload(file));
+    // Filter valid files that are ready for upload
+    const validFiles = audioFiles.filter(file => 
+      file.isValid && 
+      file.selectedChapterId && 
+      file.selectedStartVerseId && 
+      file.selectedEndVerseId
+    );
 
     if (validFiles.length === 0) {
       toast({
@@ -142,70 +155,61 @@ export function AudioUploadModal({
     setIsUploading(true);
 
     try {
-      let successCount = 0;
-      
-      for (const file of validFiles) {
-        // Update file status
-        updateFile(file.id, { uploadStatus: 'uploading', uploadProgress: 0 });
-
-        try {
-          await uploadService.uploadAudioFile({
-            file,
-            projectId: selectedProject.id,
-            languageEntityId: selectedProject.source_language_entity_id, // TODO: verify which language entity ID to use
-            chapterId: file.selectedChapterId!,
-            startVerseId: file.selectedStartVerseId!,
-            endVerseId: file.selectedEndVerseId!,
-            durationSeconds: file.duration,
-            // No verse timings since we're not extracting them anymore
-            verseTimings: undefined,
-            onProgress: (progress) => {
-              updateFile(file.id, { uploadProgress: progress });
-            }
-          });
-
-          updateFile(file.id, { uploadStatus: 'success', uploadProgress: 100 });
-          successCount++;
-        } catch (error) {
-          console.error('Upload failed for file:', file.name, error);
-          updateFile(file.id, { 
-            uploadStatus: 'error', 
-            uploadError: error instanceof Error ? error.message : 'Upload failed'
-          });
-        }
+      // Get auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No authentication session found');
       }
 
-      if (successCount > 0) {
+      // Validate target language entity ID exists
+      if (!selectedProject.target_language_entity_id) {
         toast({
-          title: 'Upload completed',
-          description: `Successfully uploaded ${successCount} of ${validFiles.length} files`,
-          variant: 'success'
+          title: 'Upload Error',
+          description: 'Project target language is not configured. Please contact an administrator.',
+          variant: 'destructive',
         });
-
-        onUploadComplete?.();
-        
-        // Only close if all uploads were successful
-        if (successCount === validFiles.length) {
-          handleClose();
-        }
-      } else {
-        toast({
-          title: 'Upload failed',
-          description: 'No files were uploaded successfully. Please check the errors and try again.',
-          variant: 'error'
-        });
+        return;
       }
+
+      // Create bulk upload files
+      const bulkUploadFiles = createBulkUploadFiles(
+        validFiles,
+        selectedProject.id,
+        selectedProject.target_language_entity_id // Use target language entity ID
+      );
+
+      // Create bulk upload manager (without progress callback since modal will close)
+      const uploadManager = new BulkUploadManager();
+
+      // Start bulk upload
+      const result = await uploadManager.startBulkUpload(bulkUploadFiles, session.access_token);
+
+      // Show success message
+      toast({
+        title: 'Upload started',
+        description: `Started uploading ${validFiles.length} files. You can view progress in the Audio Files page.`,
+        variant: 'success'
+      });
+
+      // Close modal immediately after initiating upload
+      handleClose();
+
+      // Trigger refresh of audio files page
+      onUploadComplete?.();
+
+      console.log('✅ Bulk upload initiated successfully:', result);
+
     } catch (error) {
-      console.error('Upload batch failed:', error);
+      console.error('❌ Bulk upload failed:', error);
       toast({
         title: 'Upload failed',
-        description: 'There was an error uploading your files',
+        description: error instanceof Error ? error.message : 'Failed to start upload',
         variant: 'error'
       });
     } finally {
       setIsUploading(false);
     }
-  }, [selectedProject, audioFiles, updateFile, uploadService, toast, onUploadComplete]);
+  }, [selectedProject, audioFiles, toast, onUploadComplete]);
 
   // Clear all files
   const clearAllFiles = useCallback(() => {
@@ -223,7 +227,9 @@ export function AudioUploadModal({
 
   const hasFiles = audioFiles.length > 0;
   const validFiles = audioFiles.filter(f => f.isValid);
-  const uploadableFiles = validFiles.filter(f => uploadService.isFileValidForUpload(f));
+  const uploadableFiles = validFiles.filter(f => 
+    f.selectedChapterId && f.selectedStartVerseId && f.selectedEndVerseId
+  );
   const canUpload = uploadableFiles.length > 0 && !isUploading && !isProcessing;
 
   return (
@@ -309,7 +315,7 @@ export function AudioUploadModal({
             </div>
           )}
 
-          {/* Instructions */}
+          {/* Updated Instructions */}
           <div className="text-sm text-neutral-600 dark:text-neutral-400 space-y-2 p-4 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
             <h4 className="font-medium text-neutral-900 dark:text-neutral-100">Instructions:</h4>
             <ul className="list-disc list-inside space-y-1">
@@ -317,10 +323,10 @@ export function AudioUploadModal({
               <li><strong>Example:</strong> <code className="bg-neutral-200 dark:bg-neutral-700 px-1 rounded text-neutral-900 dark:text-neutral-100">Bajhangi_2 Kings_Chapter001_V001_018.mp3</code> (2 Kings chapter 1, verses 1-18)</li>
               <li><strong>Example:</strong> <code className="bg-neutral-200 dark:bg-neutral-700 px-1 rounded text-neutral-900 dark:text-neutral-100">Bajhangi_Psalms_Chapter089_V027_052.mp3</code> (Psalms chapter 89, verses 27-52)</li>
               <li>Files are automatically processed to detect book, chapter, and verses from filenames</li>
-              <li>Verse timestamps are no longer extracted (simplified for performance)</li>
               <li>Select book, chapter, and verse range for each file before uploading</li>
               <li>Only one audio file can play at a time</li>
-              <li>Maximum file size: 500MB per file</li>
+              <li>Maximum file size: 500MB per file, up to 50 files per batch</li>
+              <li><strong>Background Upload:</strong> After clicking upload, this modal will close and uploads will continue in the background. Check the Audio Files page for progress.</li>
             </ul>
           </div>
         </div>
@@ -348,8 +354,8 @@ export function AudioUploadModal({
             {isUploading && <LoadingSpinner className="h-4 w-4" />}
             <span>
               {isUploading 
-                ? 'Uploading...' 
-                : `Upload ${uploadableFiles.length} Files`
+                ? 'Starting Upload...' 
+                : `Start Upload (${uploadableFiles.length} Files)`
               }
             </span>
           </Button>

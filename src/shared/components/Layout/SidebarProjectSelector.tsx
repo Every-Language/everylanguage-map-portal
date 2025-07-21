@@ -10,9 +10,13 @@ export const SidebarProjectSelector: React.FC = () => {
   const { data: languageEntities = [] } = useLanguageEntities();
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Get the target language name
+  // Get both source and target language names
   const targetLanguage = selectedProject 
     ? languageEntities.find(lang => lang.id === selectedProject.target_language_entity_id)?.name || 'Unknown'
+    : '';
+  
+  const sourceLanguage = selectedProject 
+    ? languageEntities.find(lang => lang.id === selectedProject.source_language_entity_id)?.name || 'Unknown'
     : '';
 
   return (
@@ -35,7 +39,7 @@ export const SidebarProjectSelector: React.FC = () => {
                 {selectedProject.name}
               </div>
               <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-                {targetLanguage}
+                {sourceLanguage} → {targetLanguage}
               </div>
             </div>
           ) : (
