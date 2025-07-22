@@ -204,7 +204,21 @@ export function AudioUploadModal({
       });
       setIsCreatingAudioVersion(false);
     }
-  }, [selectedProject, newAudioVersionName, selectedBibleVersion, createAudioVersionMutation, dbUser?.id, toast, refetchAudioVersions]);
+  }, [selectedProject, newAudioVersionName, selectedBibleVersion, createAudioVersionMutation, dbUser, toast, refetchAudioVersions]);
+
+  // Clear all files
+  const clearAllFiles = useCallback(() => {
+    setAudioFiles([]);
+    setCurrentlyPlayingId(null);
+  }, []);
+
+  // Handle modal close
+  const handleClose = useCallback(() => {
+    if (isUploading) return;
+    clearAllFiles();
+    setIsProcessing(false);
+    onOpenChange(false);
+  }, [isUploading, clearAllFiles, onOpenChange]);
 
   // Handle bulk upload - NEW IMPLEMENTATION
   const handleUpload = useCallback(async () => {
@@ -304,21 +318,7 @@ export function AudioUploadModal({
     } finally {
       setIsUploading(false);
     }
-  }, [selectedProject, audioVersions, audioFiles, toast, onUploadComplete]);
-
-  // Clear all files
-  const clearAllFiles = useCallback(() => {
-    setAudioFiles([]);
-    setCurrentlyPlayingId(null);
-  }, []);
-
-  // Handle modal close
-  const handleClose = useCallback(() => {
-    if (isUploading) return;
-    clearAllFiles();
-    setIsProcessing(false);
-    onOpenChange(false);
-  }, [isUploading, clearAllFiles, onOpenChange]);
+  }, [selectedProject, audioVersions, audioFiles, toast, onUploadComplete, handleClose]);
 
   const hasFiles = audioFiles.length > 0;
   const validFiles = audioFiles.filter(f => f.isValid);

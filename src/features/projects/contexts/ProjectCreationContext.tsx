@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
+import React, { createContext, useReducer, type ReactNode } from 'react';
 import {
   type ProjectCreationState,
   type ProjectCreationAction,
@@ -126,6 +126,7 @@ interface ProjectCreationContextType {
   resetForm: () => void;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const ProjectCreationContext = createContext<ProjectCreationContextType | undefined>(undefined);
 
 interface ProjectCreationProviderProps {

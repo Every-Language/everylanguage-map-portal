@@ -1,4 +1,5 @@
 import type { ProcessedAudioFile } from './audioFileProcessor';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
 export interface BulkUploadFile {
@@ -60,7 +61,7 @@ export interface BulkUploadResponse {
 }
 
 export class BulkUploadManager {
-  private subscription?: any;
+  private subscription?: RealtimeChannel;
   public progressCallback?: (progress: BulkUploadProgress[]) => void;
   private allProgressState: Map<string, BulkUploadProgress> = new Map();
 
@@ -184,7 +185,7 @@ export class BulkUploadManager {
           table: 'media_files',
           filter: `id=in.(${mediaFileIds.join(',')})`
         },
-        (payload: { new: { [key: string]: any } }) => {
+        (payload: { new: Record<string, unknown> }) => {
           console.log('📡 Progress update received:', payload);
           this.handleProgressUpdate(payload.new);
         }
@@ -219,7 +220,7 @@ export class BulkUploadManager {
     };
 
     // Update our progress state
-    this.allProgressState.set(updatedRecord.id, progress);
+    this.allProgressState.set(id, progress);
     
     // Notify listeners
     this.notifyProgress();
@@ -359,7 +360,7 @@ export class BulkUploadManager {
     if (this.subscription) {
       console.log('🧹 Cleaning up bulk upload subscription');
       this.subscription.unsubscribe();
-      this.subscription = null;
+      this.subscription = undefined;
     }
   }
 }

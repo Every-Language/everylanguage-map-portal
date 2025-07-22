@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react'
-import { ChevronDown, ChevronRight, Search, Book as BookIcon, Info, Upload, Edit3, Plus } from 'lucide-react'
+import React, { useState, useMemo } from 'react'
+import { ChevronDown, ChevronRight, Search, Book as BookIcon, Info, Upload, Edit3 } from 'lucide-react'
 import {
   Card,
   CardContent,
@@ -18,12 +18,9 @@ import {
 import {
   getStatusColor,
   formatProgress,
-  formatStatus,
-  sortBooksByPriority,
-  type BookStatus
+  formatStatus
 } from '../../../shared/utils/bible-progress'
 import { cn } from '../../../shared/design-system/utils'
-import { useNavigate } from 'react-router-dom'
 
 // Action buttons component for books and chapters
 const ActionButtons: React.FC<{
@@ -268,11 +265,10 @@ export const BibleBooksList: React.FC<BibleBooksListProps> = ({
   projectId, 
   className 
 }) => {
-  // Navigation hook
-  const navigate = useNavigate()
+
   
   // All hooks must be called before any early returns
-  const { data: bibleData, isLoading, error, refetch } = useBibleProjectDashboard(projectId)
+  const { data: bibleData, isLoading, error } = useBibleProjectDashboard(projectId)
   
   // Real-time subscription for live updates
   useBibleProjectDashboardRealtime(projectId)
@@ -282,7 +278,7 @@ export const BibleBooksList: React.FC<BibleBooksListProps> = ({
   const [chapterStatusFilter, setChapterStatusFilter] = useState<'all' | 'not_started' | 'in_progress' | 'complete'>('all')
   const [expandedBooks, setExpandedBooks] = useState<Set<string>>(new Set())
   const [showLegend, setShowLegend] = useState(false)
-  const [highlightedItems, setHighlightedItems] = useState<Set<string>>(new Set())
+
 
   // Status legend data
   const statusLegend = [
@@ -291,28 +287,7 @@ export const BibleBooksList: React.FC<BibleBooksListProps> = ({
     { status: 'not_started', label: 'Not Started', description: 'No verses recorded' }
   ] as const
 
-  // Action handlers
-  const handleBookUpload = useCallback((bookId: string) => {
-    // Navigate to upload page with book pre-selected
-    navigate(`/upload?book=${bookId}&project=${projectId}`)
-  }, [navigate, projectId])
 
-  const handleBookEdit = useCallback((bookId: string) => {
-    // Placeholder for book edit modal or page
-    console.log('Edit book:', bookId)
-    // TODO: Implement book edit functionality
-  }, [])
-
-  const handleChapterUpload = useCallback((chapterId: string) => {
-    // Navigate to upload page with chapter pre-selected
-    navigate(`/upload?chapter=${chapterId}&project=${projectId}`)
-  }, [navigate, projectId])
-
-  const handleChapterEdit = useCallback((chapterId: string) => {
-    // Placeholder for chapter edit modal or page
-    console.log('Edit chapter:', chapterId)
-    // TODO: Implement chapter edit functionality
-  }, [])
 
   // Filter books by search and status - must be called before early returns
   const filteredBooks = useMemo(() => {

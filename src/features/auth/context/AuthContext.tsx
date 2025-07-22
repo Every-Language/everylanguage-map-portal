@@ -2,6 +2,7 @@ import React, { createContext, useEffect, useState, useCallback, useRef } from '
 import { authService } from '../services/auth'
 import type { AuthContextType, AuthState, User, Session, DbUser } from '../types'
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

@@ -13,11 +13,10 @@ import { LoadingSpinner } from './shared/design-system';
 const BibleProgressPage = React.lazy(() => import('./app/pages/BibleProgressPage').then(module => ({ default: module.BibleProgressPage })));
 const AudioFilesPage = React.lazy(() => import('./app/pages/AudioFilesPage').then(module => ({ default: module.AudioFilesPage })));
 const BibleTextPage = React.lazy(() => import('./app/pages/BibleTextPage').then(module => ({ default: module.BibleTextPage })));
-const ImagesPage = React.lazy(() => import('./app/pages/ImagesPage').then(module => ({ default: module.ImagesPage })));
-const CommunityCheckPage = React.lazy(() => import('./app/pages/CommunityCheckPage').then(module => ({ default: module.CommunityCheckPage })));
-const UsersPage = React.lazy(() => import('./app/pages/UsersPage').then(module => ({ default: module.UsersPage })));
+const ImagesPage = React.lazy(() => import('./features/image-management/pages').then(module => ({ default: module.ImagesPage })));
+const CommunityCheckPage = React.lazy(() => import('./features/community-check').then(module => ({ default: module.CommunityCheckPage })));
+const UsersPage = React.lazy(() => import('./features/user-management/pages').then(module => ({ default: module.UsersPage })));
 const AudioUploadPage = React.lazy(() => import('./features/upload/pages/AudioUploadPage').then(module => ({ default: module.AudioUploadPage })));
-const ComponentDemoPage = React.lazy(() => import('./app/pages/ComponentDemoPage').then(module => ({ default: module.ComponentDemoPage })));
 const ProjectCreationPage = React.lazy(() => import('./features/projects/pages/ProjectCreationPage').then(module => ({ default: module.ProjectCreationPage })));
 
 // Helper component to reduce repetition
@@ -60,9 +59,6 @@ function App() {
                 {/* Other protected routes without layout */}
                 <Route path="/upload" element={<ProtectedRoute><Suspense fallback={<PageLoadingFallback />}><AudioUploadPage /></Suspense></ProtectedRoute>} />
                 <Route path="/projects/new" element={<ProtectedRoute><Suspense fallback={<PageLoadingFallback />}><ProjectCreationPage /></Suspense></ProtectedRoute>} />
-                
-                {/* Demo page */}
-                <Route path="/components" element={<Suspense fallback={<PageLoadingFallback />}><ComponentDemoPage /></Suspense>} />
                 
                 {/* Default redirect */}
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />

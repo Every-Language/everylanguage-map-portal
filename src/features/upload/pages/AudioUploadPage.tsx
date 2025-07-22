@@ -1,5 +1,4 @@
 import React, { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   FileUpload,
   Card,
@@ -76,7 +75,6 @@ export function AudioUploadPage() {
   const [selectedFileForPreview, setSelectedFileForPreview] = useState<string | null>(null);
   
   const { toast } = useToast();
-  const navigate = useNavigate();
 
   // Validate audio file
   const validateAudioFile = useCallback((file: File): string | null => {

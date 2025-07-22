@@ -1,0 +1,1 @@
+// Types index - future home for image-specific types 

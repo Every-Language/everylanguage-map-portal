@@ -365,7 +365,7 @@ export function BibleTextUploadModal({
       });
       setIsCreatingTextVersion(false);
     }
-  }, [selectedProject, newTextVersionName, selectedBibleVersion, createTextVersionMutation, dbUser?.id, toast, refetchTextVersions]);
+  }, [selectedProject, newTextVersionName, selectedBibleVersion, createTextVersionMutation, dbUser, toast, refetchTextVersions]);
 
   // Handle upload
   const handleUpload = useCallback(async () => {

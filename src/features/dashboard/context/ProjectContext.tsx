@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
+import React, { createContext, useState, useCallback, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { type Project } from '../../../shared/hooks/query/projects'
 
@@ -9,6 +9,7 @@ export interface ProjectContextValue {
   isProjectSelected: boolean
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const ProjectContext = createContext<ProjectContextValue | undefined>(undefined)
 
 const SELECTED_PROJECT_STORAGE_KEY = 'omt_selected_project'

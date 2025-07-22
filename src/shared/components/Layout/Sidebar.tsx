@@ -30,7 +30,7 @@ export const Sidebar: React.FC = () => {
     <SidebarContainer>
       <SidebarHeader>
         <div className="flex items-center">
-          <div className="h-8 w-8 bg-gradient-to-br from-accent-500 to-accent-700 rounded-lg flex items-center justify-center mr-3">
+          <div className="h-8 w-8 bg-gradient-to-br from-accent-600 to-accent-800 rounded-lg flex items-center justify-center mr-3">
             <svg
               className="h-5 w-5 text-white"
               fill="none"
@@ -41,13 +41,13 @@ export const Sidebar: React.FC = () => {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
+                d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
               />
             </svg>
           </div>
           <div>
-            <h1 className="text-sm font-black text-neutral-900 dark:text-neutral-100">OMT.</h1>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">Audio Platform</p>
+            <h1 className="text-sm font-black text-neutral-900 dark:text-neutral-100">OMT</h1>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">Project Management</p>
           </div>
         </div>
       </SidebarHeader>

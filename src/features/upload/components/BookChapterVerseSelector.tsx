@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { Select, SelectItem } from '../../../shared/design-system/components';
 import { useBooksByBibleVersion, useChaptersByBook, useVersesByChapter } from '../../../shared/hooks/query/bible-structure';
 import { useQuery } from '@tanstack/react-query';
@@ -80,22 +80,22 @@ export function BookChapterVerseSelector({
   } = useVersesByChapter(selectedChapterId || '');
 
   // Handle changes
-  const handleBookChange = (bookId: string) => {
+  const handleBookChange = useCallback((bookId: string) => {
     onBookChange(bookId);
     // Reset dependent selections
     onChapterChange('');
     onStartVerseChange('');
     onEndVerseChange('');
-  };
+  }, [onBookChange, onChapterChange, onStartVerseChange, onEndVerseChange]);
 
-  const handleChapterChange = (chapterId: string) => {
+  const handleChapterChange = useCallback((chapterId: string) => {
     onChapterChange(chapterId);
     // Reset dependent selections
     onStartVerseChange('');
     onEndVerseChange('');
-  };
+  }, [onChapterChange, onStartVerseChange, onEndVerseChange]);
 
-  const handleStartVerseChange = (verseId: string) => {
+  const handleStartVerseChange = useCallback((verseId: string) => {
     onStartVerseChange(verseId);
     // Reset end verse if it's before start verse
     if (selectedEndVerseId) {
@@ -105,11 +105,11 @@ export function BookChapterVerseSelector({
         onEndVerseChange('');
       }
     }
-  };
+  }, [onStartVerseChange, onEndVerseChange, selectedEndVerseId, verses]);
 
-  const handleEndVerseChange = (verseId: string) => {
+  const handleEndVerseChange = useCallback((verseId: string) => {
     onEndVerseChange(verseId);
-  };
+  }, [onEndVerseChange]);
 
   // Filter end verses to only show those after start verse
   const availableEndVerses = selectedStartVerseId 
@@ -127,7 +127,7 @@ export function BookChapterVerseSelector({
         handleBookChange(matchingBook.id);
       }
     }
-  }, [detectedBook, selectedBookId, books]);
+  }, [detectedBook, selectedBookId, books, handleBookChange]);
 
   useEffect(() => {
     // Auto-select chapter if detected and not already selected
@@ -139,7 +139,7 @@ export function BookChapterVerseSelector({
         handleChapterChange(matchingChapter.id);
       }
     }
-  }, [detectedChapter, selectedBookId, selectedChapterId, chapters]);
+  }, [detectedChapter, selectedBookId, selectedChapterId, chapters, handleChapterChange]);
 
   useEffect(() => {
     // Auto-select verses if detected and not already selected
@@ -161,7 +161,7 @@ export function BookChapterVerseSelector({
         }
       }
     }
-  }, [detectedStartVerse, detectedEndVerse, selectedChapterId, selectedStartVerseId, selectedEndVerseId, verses]);
+  }, [detectedStartVerse, detectedEndVerse, selectedChapterId, selectedStartVerseId, selectedEndVerseId, verses, handleStartVerseChange, handleEndVerseChange]);
 
   const isLoading = loadingBibleVersion || loadingBooks || loadingChapters || loadingVerses;
 

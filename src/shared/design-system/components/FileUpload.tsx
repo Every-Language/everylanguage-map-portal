@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useRef } from 'react';
+import Papa from 'papaparse';
 import { cn } from '../utils';
 import { Button } from './Button';
 import { ArrowUpTrayIcon, DocumentTextIcon, XMarkIcon } from '@heroicons/react/24/outline';
@@ -221,28 +222,28 @@ export const CSVUpload: React.FC<CSVUploadProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const parseCSV = useCallback((text: string): CSVRow[] => {
-    const lines = text.split('\n').filter(line => line.trim());
-    if (lines.length === 0) return [];
+    if (!text || text.trim().length === 0) return [];
 
     // Detect separator (tab vs comma)
-    const firstLine = lines[0];
+    const firstLine = text.split('\n')[0];
     const tabCount = (firstLine.match(/\t/g) || []).length;
     const commaCount = (firstLine.match(/,/g) || []).length;
-    const separator = tabCount > commaCount ? '\t' : ',';
+    const delimiter = tabCount > commaCount ? '\t' : ',';
 
-    // Parse headers (first row)
-    const headers = lines[0].split(separator).map(h => h.trim().replace(/['"]/g, ''));
-    
-    // Parse data rows (skip first row which is headers)
-    const data = lines.slice(1).map(line => {
-      const values = line.split(separator).map(v => v.trim().replace(/['"]/g, ''));
-      return headers.reduce((obj, header, index) => {
-        obj[header] = values[index] || '';
-        return obj;
-      }, {} as CSVRow);
+    // Use Papa Parse for proper CSV parsing that handles quoted fields
+    const results = Papa.parse(text, {
+      header: true,
+      delimiter: delimiter,
+      skipEmptyLines: true,
+      transformHeader: (header: string) => header.trim(),
+      transform: (value: string) => value.trim()
     });
 
-    return data;
+    if (results.errors.length > 0) {
+      console.warn('CSV parsing warnings:', results.errors);
+    }
+
+    return results.data as CSVRow[];
   }, []);
 
   const handleFile = useCallback(async (file: File) => {

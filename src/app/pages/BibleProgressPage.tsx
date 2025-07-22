@@ -78,9 +78,9 @@ export const BibleProgressPage: React.FC = () => {
         <div className="space-y-1">
           <div className="flex justify-between text-xs">
             <span>{row.versesCovered}/{row.totalVerses} verses</span>
-            <span>{Math.round(value * 100)}%</span>
+            <span>{Math.round((value as number) * 100)}%</span>
           </div>
-          <Progress value={value * 100} className="h-2" />
+          <Progress value={(value as number) * 100} className="h-2" />
         </div>
       )
     },
@@ -124,18 +124,21 @@ export const BibleProgressPage: React.FC = () => {
       key: 'mediaFiles',
       header: 'Media Files',
       width: '150px',
-      render: (value: ChapterRow['mediaFiles']) => (
-        <div className="space-y-1">
-          <div className="text-sm font-medium">
-            {value.length} file{value.length !== 1 ? 's' : ''}
-          </div>
-          {value.length > 0 && (
-            <div className="text-xs text-neutral-600 dark:text-neutral-400">
-              Total: {Math.round(value.reduce((sum, file) => sum + (file.duration_seconds || 0), 0) / 60)}m
+      render: (value) => {
+        const mediaFiles = value as ChapterRow['mediaFiles'];
+        return (
+          <div className="space-y-1">
+            <div className="text-sm font-medium">
+              {mediaFiles.length} file{mediaFiles.length !== 1 ? 's' : ''}
             </div>
-          )}
-        </div>
-      )
+            {mediaFiles.length > 0 && (
+              <div className="text-xs text-neutral-600 dark:text-neutral-400">
+                Total: {Math.round(mediaFiles.reduce((sum, file) => sum + (file.duration_seconds || 0), 0) / 60)}m
+              </div>
+            )}
+          </div>
+        );
+      }
     }
   ];
 

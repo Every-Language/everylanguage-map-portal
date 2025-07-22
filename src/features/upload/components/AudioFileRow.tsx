@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { Button, Progress } from '../../../shared/design-system/components';
 import { AudioPlayer } from '../../../shared/design-system/components/AudioPlayer';
 import { BookChapterVerseSelector } from './BookChapterVerseSelector';
