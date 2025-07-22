@@ -8,6 +8,7 @@ export interface BulkUploadFile {
 
 export interface BulkUploadMetadata {
   languageEntityId: string;
+  audioVersionId: string;
   projectId?: string;
   fileName: string;
   durationSeconds: number;
@@ -255,8 +256,8 @@ export class BulkUploadManager {
       return errors;
     }
 
-    if (files.length > 50) {
-      errors.push('Maximum 50 files allowed per bulk upload');
+    if (files.length > 80) {
+      errors.push('Maximum 80 files allowed per bulk upload');
     }
 
     files.forEach((item, index) => {
@@ -367,7 +368,8 @@ export class BulkUploadManager {
 export function createBulkUploadFiles(
   processedFiles: ProcessedAudioFile[],
   projectId: string,
-  languageEntityId: string
+  languageEntityId: string,
+  audioVersionId: string
 ): BulkUploadFile[] {
   return processedFiles
     .filter(file => file.isValid && file.selectedChapterId && file.selectedStartVerseId && file.selectedEndVerseId)
@@ -375,6 +377,7 @@ export function createBulkUploadFiles(
       file,
       metadata: {
         languageEntityId,
+        audioVersionId,
         projectId,
         fileName: file.name,
         durationSeconds: file.duration,

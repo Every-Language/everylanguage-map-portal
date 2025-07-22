@@ -161,6 +161,48 @@ export class ImageService {
   }
 
   /**
+   * Update an image's publish status
+   */
+  async updateImagePublishStatus(
+    imageId: string, 
+    publishStatus: 'pending' | 'published' | 'archived'
+  ): Promise<Image> {
+    const { data, error } = await supabase
+      .from('images')
+      .update({
+        publish_status: publishStatus
+      })
+      .eq('id', imageId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to update image publish status: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  /**
+   * Batch update publish status for multiple images
+   */
+  async batchUpdateImagePublishStatus(
+    imageIds: string[], 
+    publishStatus: 'pending' | 'published' | 'archived'
+  ): Promise<void> {
+    const { error } = await supabase
+      .from('images')
+      .update({
+        publish_status: publishStatus
+      })
+      .in('id', imageIds);
+
+    if (error) {
+      throw new Error(`Failed to batch update image publish status: ${error.message}`);
+    }
+  }
+
+  /**
    * Delete an image (soft delete)
    */
   async deleteImage(imageId: string): Promise<void> {

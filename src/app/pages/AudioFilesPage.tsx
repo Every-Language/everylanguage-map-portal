@@ -8,6 +8,12 @@ import {
   useSoftDeleteMediaFiles,
   type MediaFileWithVerseInfo
 } from '../../shared/hooks/query/media-files';
+import { 
+  useAudioVersionsByProject, 
+  useCreateAudioVersion 
+} from '../../shared/hooks/query/audio-versions';
+import { useBibleVersions } from '../../shared/hooks/query/bible-versions';
+import { useAuth } from '../../features/auth/hooks/useAuth';
 import {
   useBooks, 
   useChaptersByBook, 
@@ -26,6 +32,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
   Select,
   SelectItem,
@@ -34,6 +41,7 @@ import {
   Progress,
   AudioPlayer
 } from '../../shared/design-system';
+import { useToast } from '../../shared/design-system/hooks/useToast';
 import { AudioUploadModal, UploadProgressDisplay } from '../../features/upload/components';
 import { useDownload } from '../../shared/hooks/useDownload';
 import { PlusIcon, ArrowDownTrayIcon, PlayIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
@@ -42,6 +50,7 @@ import { PlusIcon, ArrowDownTrayIcon, PlayIcon, PencilIcon, TrashIcon } from '@h
 type PublishStatus = 'pending' | 'published' | 'archived';
 
 interface Filters {
+  audioVersionId: string;
   publishStatus: string;
   uploadStatus: string;
   searchText: string;
@@ -54,9 +63,12 @@ interface Filters {
 export const AudioFilesPage: React.FC = () => {
   const { selectedProject } = useSelectedProject();
   const { downloadState, downloadFile, clearError } = useDownload();
+  const { user, dbUser } = useAuth();
+  const { toast } = useToast();
   
   // State management
   const [filters, setFilters] = useState<Filters>({
+    audioVersionId: 'all',
     publishStatus: 'all',
     uploadStatus: 'all',
     searchText: '',
@@ -73,6 +85,12 @@ export const AudioFilesPage: React.FC = () => {
   const [showAudioPlayer, setShowAudioPlayer] = useState(false);
   const [currentAudioFile, setCurrentAudioFile] = useState<MediaFileWithVerseInfo | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  
+  // Audio version creation state
+  const [showCreateAudioVersionModal, setShowCreateAudioVersionModal] = useState(false);
+  const [newAudioVersionName, setNewAudioVersionName] = useState('');
+  const [selectedBibleVersion, setSelectedBibleVersion] = useState<string>('');
+  const [isCreatingAudioVersion, setIsCreatingAudioVersion] = useState(false);
 
   // Edit form state
   const [editForm, setEditForm] = useState({
@@ -85,6 +103,8 @@ export const AudioFilesPage: React.FC = () => {
 
   // Data fetching
   const { data: mediaFiles, isLoading, error, refetch } = useMediaFilesByProject(selectedProject?.id || null);
+  const { data: audioVersions, isLoading: audioVersionsLoading, refetch: refetchAudioVersions } = useAudioVersionsByProject(selectedProject?.id || '');
+  const { data: bibleVersions } = useBibleVersions();
   const { data: books, isLoading: booksLoading } = useBooks();
   const { data: chapters, isLoading: chaptersLoading } = useChaptersByBook(filters.bookId !== 'all' ? filters.bookId : null);
   const { data: chapterVerses } = useVersesByChapter(editForm.chapterId || null);
@@ -94,6 +114,7 @@ export const AudioFilesPage: React.FC = () => {
   const batchUpdateStatus = useBatchUpdateMediaFileStatus();
   const batchUpdatePublishStatus = useBatchUpdateMediaFilePublishStatus();
   const softDeleteFiles = useSoftDeleteMediaFiles();
+  const createAudioVersionMutation = useCreateAudioVersion();
 
   // Media files are already enhanced with verse information from the hook
   const enhancedMediaFiles = mediaFiles || [];
@@ -103,6 +124,9 @@ export const AudioFilesPage: React.FC = () => {
     if (!enhancedMediaFiles || !selectedProject) return [];
     
     const filtered = enhancedMediaFiles.filter((file: MediaFileWithVerseInfo) => {
+      // Filter by audio version
+      const matchesAudioVersion = filters.audioVersionId === 'all' || file.audio_version_id === filters.audioVersionId;
+      
       // Filter by publish status
       const matchesPublishStatus = filters.publishStatus === 'all' || (file.publish_status || 'pending') === filters.publishStatus;
       
@@ -120,7 +144,7 @@ export const AudioFilesPage: React.FC = () => {
         file.filename?.toLowerCase().includes(filters.searchText.toLowerCase()) ||
         file.verse_reference?.toLowerCase().includes(filters.searchText.toLowerCase());
         
-      return matchesPublishStatus && matchesUploadStatus && matchesBook && matchesChapter && matchesSearch;
+      return matchesAudioVersion && matchesPublishStatus && matchesUploadStatus && matchesBook && matchesChapter && matchesSearch;
     });
     
     // Sort the filtered results
@@ -175,6 +199,63 @@ export const AudioFilesPage: React.FC = () => {
 
   const handleUploadComplete = () => {
     refetch();
+  };
+
+  // Audio version creation
+  const handleCreateAudioVersion = async () => {
+    if (!selectedProject || !newAudioVersionName.trim() || !selectedBibleVersion || !dbUser) {
+      toast({
+        title: 'Missing information',
+        description: 'Please fill in all required fields',
+        variant: 'error'
+      });
+      return;
+    }
+
+    setIsCreatingAudioVersion(true);
+
+    try {
+      const targetLanguageEntityId = selectedProject.target_language_entity_id;
+      
+      if (!targetLanguageEntityId) {
+        toast({
+          title: 'Project configuration error',
+          description: 'Project does not have a target language configured',
+          variant: 'error'
+        });
+        setIsCreatingAudioVersion(false);
+        return;
+      }
+
+      await createAudioVersionMutation.mutateAsync({
+        name: newAudioVersionName.trim(),
+        language_entity_id: targetLanguageEntityId,
+        bible_version_id: selectedBibleVersion,
+        project_id: selectedProject.id,
+        created_by: dbUser.id
+      });
+
+      toast({
+        title: 'Audio version created',
+        description: `Successfully created audio version "${newAudioVersionName}"`,
+        variant: 'success'
+      });
+
+      // Reset form and refresh data
+      setNewAudioVersionName('');
+      setSelectedBibleVersion('');
+      setShowCreateAudioVersionModal(false);
+      await refetchAudioVersions();
+      setIsCreatingAudioVersion(false);
+    } catch (error: unknown) {
+      console.error('Error creating audio version:', error);
+      toast({
+        title: 'Failed to create audio version',
+        description: error instanceof Error ? error.message : 'An unknown error occurred',
+        variant: 'error'
+      });
+      setIsCreatingAudioVersion(false);
+    }
   };
 
   // Individual publish status change
@@ -395,7 +476,7 @@ export const AudioFilesPage: React.FC = () => {
     );
   }
 
-  const isLoading_ = isLoading || booksLoading || chaptersLoading;
+  const isLoading_ = isLoading || booksLoading || chaptersLoading || audioVersionsLoading;
 
   return (
     <div className="p-6 space-y-6">
@@ -409,10 +490,20 @@ export const AudioFilesPage: React.FC = () => {
             Manage audio files for {selectedProject.name}
           </p>
         </div>
-        <Button onClick={() => setShowUploadModal(true)}>
-          <PlusIcon className="h-4 w-4 mr-2" />
-          Upload Audio
-        </Button>
+        <div className="flex items-center space-x-3">
+          <Button 
+            variant="outline" 
+            onClick={() => setShowCreateAudioVersionModal(true)}
+            disabled={!user || !dbUser}
+          >
+            <PlusIcon className="h-4 w-4 mr-2" />
+            New Audio Version
+          </Button>
+          <Button onClick={() => setShowUploadModal(true)}>
+            <PlusIcon className="h-4 w-4 mr-2" />
+            Upload Audio
+          </Button>
+        </div>
       </div>
 
       {/* Upload Progress Display */}
@@ -450,6 +541,20 @@ export const AudioFilesPage: React.FC = () => {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Audio Version</label>
+              <Select 
+                value={filters.audioVersionId} 
+                onValueChange={(value) => handleFilterChange('audioVersionId', value)}
+              >
+                <SelectItem value="all">All Versions</SelectItem>
+                {audioVersions?.map((version) => (
+                  <SelectItem key={version.id} value={version.id}>
+                    {version.name}
+                  </SelectItem>
+                ))}
+              </Select>
+            </div>
             <div>
               <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Publish Status</label>
               <Select 
@@ -904,6 +1009,78 @@ export const AudioFilesPage: React.FC = () => {
             </Button>
             <Button onClick={handleSaveEdit} disabled={updateMediaFile.isPending}>
               {updateMediaFile.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Audio Version Modal */}
+      <Dialog open={showCreateAudioVersionModal} onOpenChange={setShowCreateAudioVersionModal}>
+        <DialogContent size="lg">
+          <DialogHeader>
+            <DialogTitle>Create New Audio Version</DialogTitle>
+            <DialogDescription>
+              Create a new audio version to organize different recordings or translations
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                Audio Version Name *
+              </label>
+              <Input
+                type="text"
+                placeholder="e.g., Main Recording, Youth Version, Dramatized..."
+                value={newAudioVersionName}
+                onChange={(e) => setNewAudioVersionName(e.target.value)}
+                disabled={isCreatingAudioVersion}
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                Bible Version *
+              </label>
+              <Select 
+                value={selectedBibleVersion} 
+                onValueChange={setSelectedBibleVersion}
+                placeholder="Select a Bible version..."
+                disabled={isCreatingAudioVersion}
+              >
+                {bibleVersions?.map((version) => (
+                  <SelectItem key={version.id} value={version.id}>
+                    {version.name}
+                  </SelectItem>
+                ))}
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowCreateAudioVersionModal(false);
+                setNewAudioVersionName('');
+                setSelectedBibleVersion('');
+              }}
+              disabled={isCreatingAudioVersion}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleCreateAudioVersion}
+              disabled={!newAudioVersionName.trim() || !selectedBibleVersion || isCreatingAudioVersion}
+            >
+              {isCreatingAudioVersion ? (
+                <>
+                  <LoadingSpinner size="sm" className="mr-2" />
+                  Creating...
+                </>
+              ) : (
+                'Create Audio Version'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

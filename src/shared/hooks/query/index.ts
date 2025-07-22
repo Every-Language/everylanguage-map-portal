@@ -2,6 +2,7 @@
 export * from './base-hooks'
 
 // Specific entity hooks
+export * from './audio-versions'
 export * from './bible-structure'
 export * from './bible-versions'
 export * from './language-entities'
@@ -13,6 +14,9 @@ export * from './users'
 
 // Dashboard-specific hooks
 export * from './dashboard'
+
+// Image-related hooks
+export * from './images'
 
 // Query error handling
 export * from './use-query-error-handler'

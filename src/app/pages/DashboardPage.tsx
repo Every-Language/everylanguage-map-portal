@@ -54,11 +54,33 @@ function useBibleProgress(projectId: string | null, bibleVersionId: string | nul
 
       console.log('Calculating chapter-based progress for project:', projectId, 'version:', bibleVersionId);
 
-      // Get total chapters for this bible version
+      // First get books for this bible version
+      const { data: booksInVersion, error: booksError } = await supabase
+        .from('books')
+        .select('id')
+        .eq('bible_version_id', bibleVersionId);
+
+      if (booksError) {
+        console.error('Error getting books:', booksError);
+        throw booksError;
+      }
+
+      if (!booksInVersion || booksInVersion.length === 0) {
+        console.log('No books found for bible version:', bibleVersionId);
+        return {
+          audioProgress: { versesWithAudio: 0, totalVerses: 0, percentage: 0 },
+          textProgress: { versesWithText: 0, totalVerses: 0, percentage: 0 }
+        };
+      }
+
+      const bookIds = booksInVersion.map(book => book.id);
+      console.log('Found books:', bookIds.length);
+
+      // Now get total chapters for these books
       const { count: totalChapters, error: chaptersCountError } = await supabase
         .from('chapters')
         .select('id', { count: 'exact', head: true })
-        .eq('books.bible_version_id', bibleVersionId);
+        .in('book_id', bookIds);
 
       if (chaptersCountError) {
         console.error('Error counting chapters:', chaptersCountError);
@@ -95,12 +117,10 @@ function useBibleProgress(projectId: string | null, bibleVersionId: string | nul
             .from('verses')
             .select(`
               chapter_id,
-              chapters!inner(
-                books!inner(bible_version_id)
-              )
+              chapters!inner(book_id)
             `)
             .in('id', Array.from(allVerseIds))
-            .eq('chapters.books.bible_version_id', bibleVersionId);
+            .in('chapters.book_id', bookIds);
 
           versesWithChapters?.forEach(v => {
             if (v.chapter_id) audioChapterIds.add(v.chapter_id);
@@ -126,14 +146,12 @@ function useBibleProgress(projectId: string | null, bibleVersionId: string | nul
           .select(`
             verses!inner(
               chapter_id,
-              chapters!inner(
-                books!inner(bible_version_id)
-              )
+              chapters!inner(book_id)
             ),
             text_versions!inner(language_entity_id)
           `)
           .eq('text_versions.language_entity_id', project.target_language_entity_id)
-          .eq('verses.chapters.books.bible_version_id', bibleVersionId);
+          .in('verses.chapters.book_id', bookIds);
 
         if (textChaptersError) {
           console.error('Error getting chapters with text:', textChaptersError);

@@ -12,6 +12,7 @@ import {
   LoadingSpinner,
   Select,
   SelectItem,
+  SearchableSelect,
   Input
 } from '../../../shared/design-system/components';
 import { useToast } from '../../../shared/design-system/hooks/useToast';
@@ -19,7 +20,8 @@ import { useAuth } from '../../auth';
 import { parseImageFilename } from '../../../shared/services/imageFilenameParser';
 import { imageService } from '../../../shared/services/imageService';
 import { useBooks } from '../../../shared/hooks/query/bible-structure';
-import type { ProcessedImageFile } from '../../../shared/types/images';
+import { useImageSets } from '../../../shared/hooks/query/images';
+import type { ProcessedImageFile, ImageSet } from '../../../shared/types/images';
 import { PlusIcon, PhotoIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 // Image file types supported
@@ -46,13 +48,21 @@ export function ImageUploadModal({
 }: ImageUploadModalProps) {
   const { user, session } = useAuth();
   const { data: books } = useBooks();
+  const { data: imageSets = [], isLoading: imageSetsLoading } = useImageSets();
   const [imageFiles, setImageFiles] = useState<ProcessedImageFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [setSelectionMode, setSetSelectionMode] = useState<'existing' | 'new'>('existing');
+  const [selectedSetId, setSelectedSetId] = useState<string>('');
   const [newSetName, setNewSetName] = useState('');
-  const [createNewSet, setCreateNewSet] = useState(false);
   
   const { toast } = useToast();
+
+  // Convert image sets to options for SearchableSelect
+  const imageSetOptions = imageSets.map((set: ImageSet) => ({
+    value: set.id,
+    label: set.name
+  }));
 
   // Process uploaded files
   const handleFilesChange = useCallback(async (files: File[]) => {
@@ -102,6 +112,7 @@ export function ImageUploadModal({
           detectedBookId,
           selectedTargetType: 'book' as const,
           selectedTargetId: detectedBookId,
+          selectedSetId: undefined, // Will be set later based on user selection
           validationErrors,
           isValid: validationErrors.length === 0 && !!detectedBookId,
           uploadProgress: 0,
@@ -164,6 +175,25 @@ export function ImageUploadModal({
       return;
     }
 
+    // Validate set selection
+    if (setSelectionMode === 'existing' && !selectedSetId) {
+      toast({
+        title: 'No image set selected',
+        description: 'Please select an existing image set or choose to create a new one',
+        variant: 'warning'
+      });
+      return;
+    }
+
+    if (setSelectionMode === 'new' && !newSetName.trim()) {
+      toast({
+        title: 'No set name provided',
+        description: 'Please enter a name for the new image set',
+        variant: 'warning'
+      });
+      return;
+    }
+
     const validFiles = imageFiles.filter(file => 
       file.isValid && file.selectedTargetId
     );
@@ -179,15 +209,18 @@ export function ImageUploadModal({
 
     setIsUploading(true);
 
-         try {
-       // Get auth token from session
-       if (!session?.access_token) {
-         throw new Error('No valid auth session found');
-       }
-       const token = session.access_token;
+    try {
+      // Get auth token from session
+      if (!session?.access_token) {
+        throw new Error('No valid auth session found');
+      }
+      const token = session.access_token;
+
+      let currentSetId = setSelectionMode === 'existing' ? selectedSetId : undefined;
 
       // Upload each file
-      for (const file of validFiles) {
+      for (let i = 0; i < validFiles.length; i++) {
+        const file = validFiles[i];
         updateFile(file.id, { uploadStatus: 'uploading', uploadProgress: 0 });
 
         try {
@@ -195,11 +228,14 @@ export function ImageUploadModal({
             fileName: file.name,
             target_type: file.selectedTargetType,
             target_id: file.selectedTargetId!,
-            createNewSet: createNewSet,
-            setName: createNewSet ? newSetName : undefined
+            // Only create new set for the first image when in 'new' mode
+            createNewSet: setSelectionMode === 'new' && i === 0,
+            setName: setSelectionMode === 'new' && i === 0 ? newSetName : undefined,
+            // Use existing set ID or the set ID from previous upload
+            set_id: currentSetId
           };
 
-          await imageService.uploadImage(
+          const result = await imageService.uploadImage(
             file.file,
             uploadRequest,
             token,
@@ -207,6 +243,12 @@ export function ImageUploadModal({
               updateFile(file.id, { uploadProgress: progress });
             }
           );
+
+          // If this was the first upload and we created a new set, 
+          // store the set ID for subsequent uploads
+          if (setSelectionMode === 'new' && i === 0 && result.data?.setId) {
+            currentSetId = result.data.setId;
+          }
 
           updateFile(file.id, { uploadStatus: 'success', uploadProgress: 100 });
         } catch (error) {
@@ -227,7 +269,7 @@ export function ImageUploadModal({
       });
 
       // Close modal and refresh
-      handleClose();
+      onOpenChange(false);
       onUploadComplete?.();
 
     } catch (error) {
@@ -240,27 +282,21 @@ export function ImageUploadModal({
     } finally {
       setIsUploading(false);
     }
-  }, [user, imageFiles, createNewSet, newSetName, updateFile, toast, onUploadComplete]);
+  }, [user, imageFiles, setSelectionMode, selectedSetId, newSetName, session, updateFile, toast, onOpenChange, onUploadComplete]);
 
   // Clear all files
   const clearAllFiles = useCallback(() => {
     setImageFiles([]);
+    setSelectedSetId('');
     setNewSetName('');
-    setCreateNewSet(false);
+    setSetSelectionMode('existing');
   }, []);
-
-  // Handle modal close
-  const handleClose = useCallback(() => {
-    if (isUploading) return;
-    clearAllFiles();
-    setIsProcessing(false);
-    onOpenChange(false);
-  }, [isUploading, clearAllFiles, onOpenChange]);
 
   const hasFiles = imageFiles.length > 0;
   const validFiles = imageFiles.filter(f => f.isValid);
   const uploadableFiles = validFiles.filter(f => f.selectedTargetId);
-  const canUpload = uploadableFiles.length > 0 && !isUploading && !isProcessing;
+  const canUpload = uploadableFiles.length > 0 && !isUploading && !isProcessing && 
+    ((setSelectionMode === 'existing' && selectedSetId) || (setSelectionMode === 'new' && newSetName.trim()));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -321,30 +357,78 @@ export function ImageUploadModal({
             </div>
           )}
 
-          {/* Image Set Options */}
+          {/* Image Set Selection */}
           {hasFiles && (
             <div className="space-y-4 p-4 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
-              <h3 className="font-medium text-neutral-900 dark:text-neutral-100">Image Set Options</h3>
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="createNewSet"
-                  checked={createNewSet}
-                  onChange={(e) => setCreateNewSet(e.target.checked)}
-                  className="rounded border-gray-300 dark:border-gray-600"
-                />
-                <label htmlFor="createNewSet" className="text-sm text-neutral-700 dark:text-neutral-300">
-                  Create new image set
-                </label>
+              <h3 className="font-medium text-neutral-900 dark:text-neutral-100">Image Set Selection</h3>
+              
+              {/* Set Selection Mode */}
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    id="existing-set"
+                    name="setMode"
+                    value="existing"
+                    checked={setSelectionMode === 'existing'}
+                    onChange={() => setSetSelectionMode('existing')}
+                    className="rounded border-gray-300 dark:border-gray-600"
+                  />
+                  <label htmlFor="existing-set" className="text-sm text-neutral-700 dark:text-neutral-300">
+                    Select existing image set
+                  </label>
+                </div>
+                
+                {setSelectionMode === 'existing' && (
+                  <div className="ml-6">
+                    {imageSetsLoading ? (
+                      <div className="flex items-center space-x-2">
+                        <LoadingSpinner className="h-4 w-4" />
+                        <span className="text-sm text-neutral-600 dark:text-neutral-400">Loading image sets...</span>
+                      </div>
+                    ) : imageSetOptions.length > 0 ? (
+                      <SearchableSelect
+                        value={selectedSetId}
+                        onValueChange={setSelectedSetId}
+                        placeholder="Search and select an image set..."
+                        searchPlaceholder="Search image sets..."
+                        options={imageSetOptions}
+                        className="dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
+                      />
+                    ) : (
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                        No existing image sets found. Create a new one below.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    id="new-set"
+                    name="setMode"
+                    value="new"
+                    checked={setSelectionMode === 'new'}
+                    onChange={() => setSetSelectionMode('new')}
+                    className="rounded border-gray-300 dark:border-gray-600"
+                  />
+                  <label htmlFor="new-set" className="text-sm text-neutral-700 dark:text-neutral-300">
+                    Create new image set
+                  </label>
+                </div>
+
+                {setSelectionMode === 'new' && (
+                  <div className="ml-6">
+                    <Input
+                      placeholder="Enter set name (e.g., 'Genesis Illustrations')"
+                      value={newSetName}
+                      onChange={(e) => setNewSetName(e.target.value)}
+                      className="dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
+                    />
+                  </div>
+                )}
               </div>
-              {createNewSet && (
-                <Input
-                  placeholder="Enter set name (e.g., 'Genesis Illustrations')"
-                  value={newSetName}
-                  onChange={(e) => setNewSetName(e.target.value)}
-                  className="dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
-                />
-              )}
             </div>
           )}
 
@@ -378,10 +462,10 @@ export function ImageUploadModal({
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Target Type</label>
-                                                             <Select 
-                                 value={file.selectedTargetType} 
-                                 onValueChange={(value) => updateFile(file.id, { selectedTargetType: value as 'chapter' | 'book' | 'sermon' | 'passage' | 'verse' | 'podcast' | 'film_segment' | 'audio_segment' })}
-                               >
+                              <Select 
+                                value={file.selectedTargetType} 
+                                onValueChange={(value) => updateFile(file.id, { selectedTargetType: value as 'chapter' | 'book' | 'sermon' | 'passage' | 'verse' | 'podcast' | 'film_segment' | 'audio_segment' })}
+                              >
                                 <SelectItem value="book">Book</SelectItem>
                                 <SelectItem value="chapter">Chapter</SelectItem>
                                 <SelectItem value="verse">Verse</SelectItem>
@@ -391,11 +475,11 @@ export function ImageUploadModal({
                             <div>
                               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Target</label>
                               <Select 
-                                value={file.selectedTargetId || ''} 
-                                onValueChange={(value) => updateFile(file.id, { selectedTargetId: value })}
+                                value={file.selectedTargetId || 'placeholder'} 
+                                onValueChange={(value) => updateFile(file.id, { selectedTargetId: value === 'placeholder' ? '' : value })}
                               >
-                                <SelectItem value="">Select Target</SelectItem>
-                                {books?.map(book => (
+                                <SelectItem value="placeholder">Select Target</SelectItem>
+                                {books?.filter(book => book.id && book.id.trim()).map(book => (
                                   <SelectItem key={book.id} value={book.id}>{book.name}</SelectItem>
                                 ))}
                               </Select>
@@ -431,6 +515,7 @@ export function ImageUploadModal({
               <li><strong>Filename Examples:</strong> Genesis.jpg, 2Kings.png, John_Chapter3.jpg</li>
               <li>Images are automatically processed to detect book names from filenames</li>
               <li>Select target type and specific target for each image before uploading</li>
+              <li>Choose an existing image set or create a new one to organize your images</li>
               <li>Maximum file size: 50MB per file, up to 50 files per batch</li>
               <li>Supported formats: JPEG, PNG, GIF, WebP, BMP, SVG</li>
             </ul>
