@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import { Select, SelectItem } from '../../../shared/design-system/components';
 import { useBooksByBibleVersion, useChaptersByBook, useVersesByChapter } from '../../../shared/hooks/query/bible-structure';
 import { useQuery } from '@tanstack/react-query';

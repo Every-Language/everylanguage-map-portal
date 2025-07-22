@@ -262,8 +262,8 @@ export function DataTable<T extends Record<string, unknown>>({
                         className="px-4 py-3 text-sm text-neutral-900 dark:text-neutral-100"
                       >
                         {column.render 
-                          ? column.render(row[column.key], row)
-                          : row[column.key]
+                          ? column.render(row[column.key] as T[keyof T], row)
+                          : (row[column.key] as React.ReactNode)
                         }
                       </td>
                     ))}

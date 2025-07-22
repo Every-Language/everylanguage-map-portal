@@ -49,7 +49,7 @@ export function useOptimisticUpdates() {
 
   // Update optimistic record
   const updateOptimistic = <T extends TableName>(
-    table: T,
+    _table: T,
     id: string,
     updates: TableUpdate<T>,
     currentData: TableRow<T>

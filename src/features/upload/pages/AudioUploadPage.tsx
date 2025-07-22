@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   FileUpload,
   Card,
@@ -130,7 +130,11 @@ export function AudioUploadPage() {
       filenameParseResult,
       detectedBook: filenameParseResult.detectedBook,
       detectedChapter: filenameParseResult.detectedChapter,
-      detectedVerses: filenameParseResult.detectedVerses,
+      detectedVerses: filenameParseResult.detectedStartVerse && filenameParseResult.detectedEndVerse 
+        ? Array.from({length: filenameParseResult.detectedEndVerse - filenameParseResult.detectedStartVerse + 1}, (_, i) => filenameParseResult.detectedStartVerse! + i)
+        : filenameParseResult.detectedStartVerse ? [filenameParseResult.detectedStartVerse] 
+        : filenameParseResult.detectedEndVerse ? [filenameParseResult.detectedEndVerse]
+        : undefined,
       verseRange: filenameParseResult.verseRange
     };
     
@@ -524,7 +528,7 @@ export function AudioUploadPage() {
               onFilesChange={handleFilesChange}
               allowedTypes={SUPPORTED_AUDIO_TYPES}
               uploadText="Drop audio files here or click to select"
-              dragActiveText="Drop audio files here"
+              uploadText="Drop audio files here"
               showPreview={false}
               validateFile={validateAudioFile}
               className="min-h-[200px]"

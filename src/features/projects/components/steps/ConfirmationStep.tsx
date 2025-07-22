@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Printer, AlertCircle } from 'lucide-react';
 import { Card, CardContent } from '../../../../shared/design-system/components/Card';

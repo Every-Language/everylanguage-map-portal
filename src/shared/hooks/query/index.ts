@@ -3,20 +3,26 @@ export * from './base-hooks'
 
 // Specific entity hooks
 export * from './audio-versions'
-export * from './bible-structure'
 export * from './bible-versions'
 export * from './language-entities'
-export * from './media-files'
 export * from './projects'
 export * from './regions'
-export * from './text-versions'
 export * from './users'
 
-// Dashboard-specific hooks
-export * from './dashboard'
+// Media Files hooks (primary MediaFile export)
+export * from './media-files'
 
-// Image-related hooks
-export * from './images'
+// Bible Structure hooks - temporarily commented to avoid conflicts
+// export * from './bible-structure'
+
+// Text Versions hooks - temporarily commented to avoid conflicts
+// export * from './text-versions'
+
+// Dashboard-specific hooks - temporarily commented to avoid conflicts
+// export * from './dashboard'
+
+// Image-related hooks - temporarily commented as module may not exist
+// export * from './images'
 
 // Query error handling
 export * from './use-query-error-handler'

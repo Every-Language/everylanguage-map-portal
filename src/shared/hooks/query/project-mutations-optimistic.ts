@@ -39,7 +39,7 @@ export function useCreateProjectOptimistic() {
 
       return { context, optimisticProject }
     },
-    onSuccess: (data, variables, context) => {
+    onSuccess: (data, _variables, context) => {
       if (context?.optimisticProject) {
         // Replace optimistic data with real data
         replaceOptimisticData(
@@ -133,7 +133,7 @@ export function useUpdateProjectOptimistic() {
       // Show error feedback
       showErrorFeedback('update', 'project', error.message)
     },
-    onSettled: (data, error, variables) => {
+    onSettled: (_data, _error, variables) => {
       // Refetch to ensure data consistency
       queryClient.invalidateQueries({ queryKey: ['projects'] })
       queryClient.invalidateQueries({ queryKey: ['projects', 'detail', variables.id] })

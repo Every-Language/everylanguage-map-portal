@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent } from '../../../../shared/design-system/components/Card';
 import { Button } from '../../../../shared/design-system/components/Button';
 import { useProjectCreation } from '../../hooks/useProjectCreation';

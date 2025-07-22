@@ -135,8 +135,7 @@ const Accordion = React.forwardRef<
   <AccordionPrimitive.Root
     ref={ref}
     className={cn(accordionVariants({ variant, size, className }))}
-    type={type}
-    {...props}
+    {...(type === 'single' ? { type: 'single' as const, ...props } : { type: 'multiple' as const, ...props })}
   />
 ))
 Accordion.displayName = 'Accordion'
