@@ -131,13 +131,29 @@ interface AccordionContentProps extends
 const Accordion = React.forwardRef<
   React.ElementRef<typeof AccordionPrimitive.Root>,
   AccordionPropsWithType
->(({ className, variant, size, type, ...props }, ref) => (
-  <AccordionPrimitive.Root
-    ref={ref}
-    className={cn(accordionVariants({ variant, size, className }))}
-    {...(type === 'single' ? { type: 'single' as const, ...props } : { type: 'multiple' as const, ...props })}
-  />
-))
+>(({ className, variant, size, type, ...props }, ref) => {
+  if (type === 'single') {
+    const singleProps = props as Omit<AccordionSingleProps, 'type'>
+    return (
+      <AccordionPrimitive.Root
+        ref={ref}
+        className={cn(accordionVariants({ variant, size, className }))}
+        type="single"
+        {...singleProps}
+      />
+    )
+  } else {
+    const multipleProps = props as Omit<AccordionMultipleProps, 'type'>
+    return (
+      <AccordionPrimitive.Root
+        ref={ref}
+        className={cn(accordionVariants({ variant, size, className }))}
+        type="multiple"
+        {...multipleProps}
+      />
+    )
+  }
+})
 Accordion.displayName = 'Accordion'
 
 const AccordionItem = React.forwardRef<

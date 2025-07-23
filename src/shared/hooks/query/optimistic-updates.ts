@@ -28,7 +28,7 @@ export function useOptimisticUpdates() {
 
   // Create optimistic record
   const createOptimistic = <T extends TableName>(
-    table: T,
+    _table: T,
     data: TableInsert<T>,
     options?: {
       generateId?: () => string

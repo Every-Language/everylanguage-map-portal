@@ -52,7 +52,7 @@ export function useCreateProjectOptimistic() {
       // Show success feedback
       showSuccessFeedback('create', 'project')
     },
-    onError: (error, variables, context) => {
+    onError: (error, _variables, context) => {
       // Rollback optimistic update
       if (context?.context) {
         rollback(context.context)
@@ -179,7 +179,7 @@ export function useDeleteProjectOptimistic() {
       // Show success feedback
       showSuccessFeedback('delete', 'project')
     },
-    onError: (error, variables, context) => {
+    onError: (error, _variables, context) => {
       // Rollback optimistic update
       if (context?.context) {
         rollback(context.context)

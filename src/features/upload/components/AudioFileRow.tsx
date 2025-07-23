@@ -146,14 +146,12 @@ export function AudioFileRow({
           <h5 className="text-xs font-medium text-neutral-700 dark:text-neutral-300 uppercase tracking-wide">
             Audio Player
           </h5>
-          <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg border">
-            <AudioPlayer
-              src={URL.createObjectURL(file.file)}
-              showPlaybackSpeed={true}
-              showTimestamp={true}
-              aria-label={`Audio player for ${file.name}`}
-            />
-          </div>
+          <AudioPlayer
+            open={isPlaying}
+            onOpenChange={(open) => !open && onPause()}
+            audioUrl={URL.createObjectURL(file.file)}
+            title={file.name}
+          />
         </div>
       )}
 

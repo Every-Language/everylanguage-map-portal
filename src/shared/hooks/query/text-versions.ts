@@ -22,7 +22,6 @@ export interface VerseTextWithRelations extends Omit<VerseText, 'publish_status'
       };
     };
   };
-  publish_status?: 'pending' | 'published' | 'archived';
 }
 
 // TEXT VERSION HOOKS

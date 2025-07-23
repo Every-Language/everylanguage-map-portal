@@ -528,7 +528,6 @@ export function AudioUploadPage() {
               onFilesChange={handleFilesChange}
               allowedTypes={SUPPORTED_AUDIO_TYPES}
               uploadText="Drop audio files here or click to select"
-              uploadText="Drop audio files here"
               showPreview={false}
               validateFile={validateAudioFile}
               className="min-h-[200px]"
@@ -698,16 +697,12 @@ export function AudioUploadPage() {
 
                     {/* Audio Preview */}
                     {selectedFileForPreview === file.id && !file.uploadError && (
-                      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                        <AudioPlayer
-                          src={URL.createObjectURL(file)}
-                          title={file.name}
-                          variant="compact"
-                          size="sm"
-                          showPlaybackSpeed={false}
-                          showSkipButtons={false}
-                        />
-                      </div>
+                      <AudioPlayer
+                        open={selectedFileForPreview === file.id}
+                        onOpenChange={(open) => !open && setSelectedFileForPreview(null)}
+                        audioUrl={URL.createObjectURL(file)}
+                        title={file.name}
+                      />
                     )}
                   </div>
                 ))}

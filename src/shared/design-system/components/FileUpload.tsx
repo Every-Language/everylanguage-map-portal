@@ -17,6 +17,7 @@ interface FileUploadProps {
   size?: 'sm' | 'md' | 'lg';
   className?: string;
   disabled?: boolean;
+  validateFile?: (file: File) => string | null;
 }
 
 // CSV-specific interface
