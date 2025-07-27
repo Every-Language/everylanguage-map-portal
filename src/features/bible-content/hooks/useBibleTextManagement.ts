@@ -4,10 +4,12 @@ import { useBulkOperations } from '../../../shared/hooks/useBulkOperations';
 import { useFormState } from '../../../shared/hooks/useFormState';
 import {
   useTextVersionsByProject,
-  useVerseTextsByProject,
+  useVerseTextsByProjectPaginated,
   useUpdateVerseTextPublishStatus,
   useEditVerseText,
   useCreateTextVersion,
+  useSoftDeleteVerseTexts,
+  useRestoreVerseTexts,
   type VerseTextWithRelations
 } from '../../../shared/hooks/query/text-versions';
 import { useBooks, useChapters, useVersesByChapter } from '../../../shared/hooks/query/bible-structure';
@@ -15,15 +17,22 @@ import { useBibleVersions } from '../../../shared/hooks/query/bible-versions';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { useSelectedProject } from '../../dashboard/hooks/useSelectedProject';
 import { useToast } from '../../../shared/design-system/hooks/useToast';
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useState, useEffect } from 'react';
 import type { TextVersionForm } from '../components/BibleTextManager/TextVersionModal';
 
+// Type definitions for the bible text management
 export interface BibleTextFilters {
   textVersionId: string;
-  bookId: string;
-  chapterId: string;
   publishStatus: string;
   searchText: string;
+  bookId: string;
+  chapterId: string;
+  showDeleted?: boolean;
+}
+
+export interface BibleTextSort {
+  field: 'book_name' | 'chapter_number' | 'verse_number' | 'verse_text' | 'text_version_name' | 'publish_status' | 'created_at';
+  direction: 'asc' | 'desc';
 }
 
 export interface BibleTextEditForm extends Record<string, unknown> {
@@ -44,12 +53,15 @@ export function useBibleTextManagement(projectId: string | null) {
       bookId: 'all',
       chapterId: 'all',
       publishStatus: 'all',
-      searchText: ''
+      searchText: '',
+      showDeleted: false
     },
     initialSort: {
-      field: 'verse_reference',
-      direction: 'asc'
-    }
+      field: 'created_at',
+      direction: 'desc'
+    },
+    initialPage: 1,
+    initialItemsPerPage: 25
   });
 
   // Modal state management
@@ -90,65 +102,95 @@ export function useBibleTextManagement(projectId: string | null) {
   const { selectedProject } = useSelectedProject();
   const { toast } = useToast();
 
-  // Data fetching
+  // Data fetching using paginated hook
+  const { 
+    data: paginatedResult, 
+    isLoading: verseTextsLoading, 
+    refetch 
+  } = useVerseTextsByProjectPaginated(projectId || '', {
+    page: tableState.currentPage,
+    pageSize: tableState.itemsPerPage,
+    textVersionId: tableState.filters.textVersionId as string,
+    bookId: tableState.filters.bookId as string,
+    chapterId: tableState.filters.chapterId as string,
+    publishStatus: tableState.filters.publishStatus as string,
+    searchText: tableState.filters.searchText as string,
+    sortField: tableState.sortField,
+    sortDirection: tableState.sortDirection,
+    showDeleted: tableState.filters.showDeleted as boolean
+  });
+  
+  // Extract data and count from paginated result
+  const verseTexts = paginatedResult?.data || [];
+  const totalItems = paginatedResult?.count || 0;
+  const totalPages = Math.ceil(totalItems / tableState.itemsPerPage);
   const { data: textVersions, isLoading: textVersionsLoading, refetch: refetchTextVersions } = useTextVersionsByProject(projectId || '');
   const { data: bibleVersions } = useBibleVersions();
   const { data: books, isLoading: booksLoading } = useBooks();
-  const { data: chapters, isLoading: chaptersLoading } = useChapters();
+  const { data: allChapters, isLoading: chaptersLoading } = useChapters();
   const { data: chapterVerses } = useVersesByChapter(editForm.data.chapterId || null);
-  const { data: allVerseTexts, isLoading: verseTextsLoading, refetch: refetchVerseTexts } = useVerseTextsByProject(projectId || '');
+
+  // Filter chapters by selected book
+  const chapters = useMemo(() => {
+    if (!allChapters) return [];
+    
+    const selectedBookId = tableState.filters.bookId as string;
+    if (!selectedBookId || selectedBookId === 'all') {
+      return []; // Don't show any chapters until a book is selected
+    }
+    
+    return allChapters.filter(chapter => chapter.book_id === selectedBookId);
+  }, [allChapters, tableState.filters.bookId]);
+
+  // Auto-select first text version if none selected and "all" is currently selected
+  useEffect(() => {
+    if (textVersions && textVersions.length > 0 && tableState.filters.textVersionId === 'all') {
+      tableState.handleFilterChange('textVersionId', textVersions[0].id);
+    }
+  }, [textVersions, tableState.filters.textVersionId, tableState]);
+
+  // Clear chapter selection when book changes
+  useEffect(() => {
+    const selectedBookId = tableState.filters.bookId as string;
+    const selectedChapterId = tableState.filters.chapterId as string;
+    
+    if (selectedChapterId && selectedChapterId !== 'all' && selectedBookId && selectedBookId !== 'all') {
+      // Check if the selected chapter belongs to the selected book
+      const chapterBelongsToBook = allChapters?.some(
+        chapter => chapter.id === selectedChapterId && chapter.book_id === selectedBookId
+      );
+      
+      if (!chapterBelongsToBook) {
+        // Clear chapter selection if it doesn't belong to the selected book
+        tableState.handleFilterChange('chapterId', 'all');
+      }
+    }
+  }, [tableState.filters.bookId, tableState.filters.chapterId, allChapters, tableState]);
 
   // Mutations
   const updatePublishStatusMutation = useUpdateVerseTextPublishStatus();
   const editVerseTextMutation = useEditVerseText();
   const createTextVersionMutation = useCreateTextVersion();
+  const softDeleteVerseTextsMutation = useSoftDeleteVerseTexts();
+  const restoreVerseTextsMutation = useRestoreVerseTexts();
 
-  // Filter and sort verse texts
-  const filteredAndSortedTexts = useMemo(() => {
-    if (!allVerseTexts || !projectId) return [];
-    
-    const filtered = allVerseTexts.filter((text: VerseTextWithRelations) => {
-      const matchesTextVersion = tableState.filters.textVersionId === 'all' || text.text_version_id === tableState.filters.textVersionId;
-      const matchesBook = tableState.filters.bookId === 'all' || text.verses?.chapters?.books?.id === tableState.filters.bookId;
-      const matchesChapter = tableState.filters.chapterId === 'all' || text.verses?.chapters?.id === tableState.filters.chapterId;
-      const matchesPublishStatus = tableState.filters.publishStatus === 'all' || (text.publish_status || 'pending') === tableState.filters.publishStatus;
-      const matchesSearch = !tableState.filters.searchText || 
-        (typeof tableState.filters.searchText === 'string' && 
-         text.verse_text?.toLowerCase().includes(tableState.filters.searchText.toLowerCase()));
-        
-      return matchesTextVersion && matchesBook && matchesChapter && matchesPublishStatus && matchesSearch;
-    });
+  // Modal state for confirmations
+  const [confirmationModal, setConfirmationModal] = useState<{
+    isOpen: boolean;
+    type: 'delete' | 'restore';
+    items: string[];
+    message: string;
+  }>({
+    isOpen: false,
+    type: 'delete',
+    items: [],
+    message: ''
+  });
 
-    // Sort the filtered results
-    const sorted = [...filtered].sort((a, b) => {
-      let comparison = 0;
-      
-      switch (tableState.sortField) {
-        case 'verse_text': {
-          comparison = (a.verse_text || '').localeCompare(b.verse_text || '');
-          break;
-        }
-        case 'verse_reference': {
-          const aRef = `${a.verses?.chapters?.books?.name || ''} ${a.verses?.chapters?.chapter_number || 0}:${a.verses?.verse_number || 0}`;
-          const bRef = `${b.verses?.chapters?.books?.name || ''} ${b.verses?.chapters?.chapter_number || 0}:${b.verses?.verse_number || 0}`;
-          comparison = aRef.localeCompare(bRef);
-          break;
-        }
-        case 'version':
-          comparison = (a.version || 0) - (b.version || 0);
-          break;
-        case 'publish_status':
-          comparison = (a.publish_status || 'pending').localeCompare(b.publish_status || 'pending');
-          break;
-        default:
-          comparison = 0;
-      }
-      
-      return tableState.sortDirection === 'desc' ? -comparison : comparison;
-    });
+  // Toast notifications are available from useToast hook imported above
 
-    return sorted;
-  }, [allVerseTexts, projectId, tableState.filters, tableState.sortField, tableState.sortDirection]);
+  // Data is already filtered, sorted, and paginated on the server side
+  const filteredAndSortedTexts = verseTexts;
 
   // Bulk operations setup
   const bulkOps = useBulkOperations(filteredAndSortedTexts, {
@@ -182,6 +224,24 @@ export function useBibleTextManagement(projectId: string | null) {
             publishStatus: 'archived'
           });
         }
+      },
+      {
+        id: 'soft_delete',
+        label: 'Soft Delete',
+        handler: async (selectedIds: string[]) => {
+          await softDeleteVerseTextsMutation.mutateAsync({
+            verseTextIds: selectedIds
+          });
+        }
+      },
+      {
+        id: 'restore',
+        label: 'Restore',
+        handler: async (selectedIds: string[]) => {
+          await restoreVerseTextsMutation.mutateAsync({
+            verseTextIds: selectedIds
+          });
+        }
       }
     ]
   });
@@ -205,8 +265,65 @@ export function useBibleTextManagement(projectId: string | null) {
       textVersionId: text.text_version_id || '',
       publishStatus: text.publish_status || 'pending'
     });
-    modalState.openModal('edit', { currentVerseText: text });
+    modalState.openModal('edit', { currentText: text });
   }, [enhancedEditForm, modalState]);
+
+  // Delete handler for individual verse texts - now with confirmation
+  const handleDelete = useCallback(async (verseTextId: string) => {
+    const verseText = verseTexts?.find(text => text.id === verseTextId);
+    const verseReference = verseText ? 
+      `${verseText.verses?.chapters?.books?.name} ${verseText.verses?.chapters?.chapter_number}:${verseText.verses?.verse_number}` : 
+      'this verse text';
+      
+    setConfirmationModal({
+      isOpen: true,
+      type: 'delete',
+      items: [verseTextId],
+      message: `Are you sure you want to delete the text for ${verseReference}? This action can be undone by restoring the text later.`
+    });
+  }, [verseTexts]);
+
+  // Confirmation modal handlers
+  const handleConfirmAction = useCallback(async () => {
+    try {
+      const { type, items } = confirmationModal;
+      
+      if (type === 'delete') {
+        await softDeleteVerseTextsMutation.mutateAsync({
+          verseTextIds: items
+        });
+        toast({
+          title: 'Texts deleted',
+          description: `${items.length} text${items.length !== 1 ? 's' : ''} deleted successfully`,
+          variant: 'success'
+        });
+      } else if (type === 'restore') {
+        await restoreVerseTextsMutation.mutateAsync({
+          verseTextIds: items
+        });
+        toast({
+          title: 'Texts restored',
+          description: `${items.length} text${items.length !== 1 ? 's' : ''} restored successfully`,
+          variant: 'success'
+        });
+      }
+      
+      // Clear selection after successful operation
+      bulkOps.clearSelection();
+      setConfirmationModal({ isOpen: false, type: 'delete', items: [], message: '' });
+    } catch (error) {
+      console.error('Error in confirmation action:', error);
+      toast({
+        title: 'Operation failed',
+        description: `Failed to ${confirmationModal.type} selected texts`,
+        variant: 'error'
+      });
+    }
+  }, [confirmationModal, softDeleteVerseTextsMutation, restoreVerseTextsMutation, toast, bulkOps]);
+
+  const handleCancelConfirmation = useCallback(() => {
+    setConfirmationModal({ isOpen: false, type: 'delete', items: [], message: '' });
+  }, []);
 
   const handleSaveEdit = useCallback(async () => {
     if (!enhancedEditForm.validateForm()) return;
@@ -240,15 +357,18 @@ export function useBibleTextManagement(projectId: string | null) {
   };
 
   const handleUploadComplete = () => {
-    refetchVerseTexts();
+    refetch();
   };
 
   // Selection handlers that match component expectations
   const handleSelectAll = useCallback((checked: boolean) => {
     if (checked) {
+      // Only select items on the current page
       bulkOps.selectAll(filteredAndSortedTexts);
     } else {
-      bulkOps.clearSelection();
+      // Deselect items on the current page
+      const currentPageIds = filteredAndSortedTexts.map((text: VerseTextWithRelations) => text.id);
+      currentPageIds.forEach((id: string) => bulkOps.selectItem(id, false));
     }
   }, [filteredAndSortedTexts, bulkOps]);
 
@@ -256,10 +376,62 @@ export function useBibleTextManagement(projectId: string | null) {
     bulkOps.selectItem(id, checked);
   }, [bulkOps]);
 
-  // Execute bulk operation handler
-  const executeBulkOperation = useCallback(async (operationId: string) => {
-    await bulkOps.performBulkOperation(operationId);
-  }, [bulkOps]);
+  // Bulk operations handler
+  const executeBulkOperation = useCallback(async (action: string) => {
+    const selectedIds = Array.from(bulkOps.selectedItems);
+    if (selectedIds.length === 0) {
+      toast({
+        title: 'No items selected',
+        description: 'Please select items to perform bulk operations',
+        variant: 'warning'
+      });
+      return;
+    }
+
+    try {
+      switch (action) {
+        case 'pending':
+        case 'published':
+        case 'archived':
+          await updatePublishStatusMutation.mutateAsync({
+            verseTextIds: selectedIds,
+            publishStatus: action as 'pending' | 'published' | 'archived'
+          });
+          toast({
+            title: 'Status updated',
+            description: `${selectedIds.length} texts updated to ${action}`,
+            variant: 'success'
+          });
+          bulkOps.clearSelection();
+          break;
+        case 'soft_delete':
+          setConfirmationModal({
+            isOpen: true,
+            type: 'delete',
+            items: selectedIds,
+            message: `Are you sure you want to delete ${selectedIds.length} selected verse text${selectedIds.length !== 1 ? 's' : ''}? This action can be undone by restoring the texts later.`
+          });
+          break;
+        case 'restore':
+          setConfirmationModal({
+            isOpen: true,
+            type: 'restore',
+            items: selectedIds,
+            message: `Are you sure you want to restore ${selectedIds.length} selected verse text${selectedIds.length !== 1 ? 's' : ''}?`
+          });
+          break;
+        default:
+          console.warn('Unknown bulk operation:', action);
+      }
+    } catch (error) {
+      console.error('Error in bulk operation:', error);
+      toast({
+        title: 'Operation failed',
+        description: `Failed to ${action} selected texts`,
+        variant: 'error'
+      });
+    }
+  }, [bulkOps, updatePublishStatusMutation, toast, setConfirmationModal]);
 
   // Enhanced form state for text version creation
   const enhancedTextVersionForm = useMemo(() => ({
@@ -317,10 +489,10 @@ export function useBibleTextManagement(projectId: string | null) {
     }
   }, [projectId, enhancedTextVersionForm, dbUser, toast, createTextVersionMutation, selectedProject, modalState, refetchTextVersions]);
 
-  // Computed properties for selection state
+  // Computed properties for selection state (based on current page)
   const allCurrentPageSelected = filteredAndSortedTexts.length > 0 && 
-    filteredAndSortedTexts.every(text => bulkOps.selectedItems.has(text.id));
-  const someCurrentPageSelected = filteredAndSortedTexts.some(text => bulkOps.selectedItems.has(text.id));
+    filteredAndSortedTexts.every((text: VerseTextWithRelations) => bulkOps.selectedItems.has(text.id));
+  const someCurrentPageSelected = filteredAndSortedTexts.some((text: VerseTextWithRelations) => bulkOps.selectedItems.has(text.id));
   const selectedItems = Array.from(bulkOps.selectedItems);
 
   // Helper function to safely extract filters as BibleTextFilters type
@@ -330,7 +502,8 @@ export function useBibleTextManagement(projectId: string | null) {
       bookId: (filters.bookId as string) || 'all', 
       chapterId: (filters.chapterId as string) || 'all',
       publishStatus: (filters.publishStatus as string) || 'all',
-      searchText: (filters.searchText as string) || ''
+      searchText: (filters.searchText as string) || '',
+      showDeleted: (filters.showDeleted as boolean) || false
     };
   };
 
@@ -349,7 +522,13 @@ export function useBibleTextManagement(projectId: string | null) {
     books: books || [],
     chapters: chapters || [],
     chapterVerses: chapterVerses || [],
-    filteredAndSortedTexts,
+    filteredAndSortedTexts, // Use server-side filtered, sorted and paginated data
+    
+    // Pagination state
+    currentPage: tableState.currentPage,
+    itemsPerPage: tableState.itemsPerPage,
+    totalItems,
+    totalPages,
     
     // Loading states
     isLoading: verseTextsLoading || textVersionsLoading || booksLoading || chaptersLoading,
@@ -362,6 +541,8 @@ export function useBibleTextManagement(projectId: string | null) {
     // Actions that match component expectations - use the ones from tableState
     handleFilterChange: tableState.handleFilterChange,
     handleSort: tableState.handleSort,
+    handlePageChange: tableState.handlePageChange,
+    handlePageSizeChange: tableState.handlePageSizeChange,
     handleSelectAll,
     handleRowSelect,
     handleEditClick,
@@ -370,13 +551,19 @@ export function useBibleTextManagement(projectId: string | null) {
     handleUploadComplete,
     executeBulkOperation,
     clearSelection: bulkOps.clearSelection,
-    refetchVerseTexts,
+    refetchVerseTexts: refetch,
     
     // Mutations
     updatePublishStatusMutation,
     editVerseTextMutation,
     createTextVersionMutation,
     enhancedTextVersionForm,
-    handleCreateTextVersion
+    handleCreateTextVersion,
+    softDeleteVerseTextsMutation,
+    restoreVerseTextsMutation,
+    handleDelete,
+    confirmationModal,
+    handleConfirmAction,
+    handleCancelConfirmation
   };
 } 

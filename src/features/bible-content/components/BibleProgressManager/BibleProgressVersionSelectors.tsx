@@ -2,11 +2,6 @@ import React from 'react';
 import { Select, SelectItem, Button } from '../../../../shared/design-system';
 
 interface BibleProgressVersionSelectorsProps {
-  // Bible versions
-  selectedBibleVersion: string;
-  setSelectedBibleVersion: (versionId: string) => void;
-  bibleVersions: Array<{ id: string; name: string }>;
-  
   // Version type selection
   selectedVersionType: 'audio' | 'text';
   setSelectedVersionType: (type: 'audio' | 'text') => void;
@@ -21,9 +16,6 @@ interface BibleProgressVersionSelectorsProps {
 }
 
 export const BibleProgressVersionSelectors: React.FC<BibleProgressVersionSelectorsProps> = ({
-  selectedBibleVersion,
-  setSelectedBibleVersion,
-  bibleVersions,
   selectedVersionType,
   setSelectedVersionType,
   setSelectedAudioVersion,
@@ -44,55 +36,27 @@ export const BibleProgressVersionSelectors: React.FC<BibleProgressVersionSelecto
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {/* Bible Version Selector */}
-      <div>
-        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-          Bible Version
-        </label>
-        <Select 
-          value={selectedBibleVersion} 
-          onValueChange={setSelectedBibleVersion}
-          placeholder="Select Bible version"
-        >
-          {bibleVersions.map((version) => (
-            <SelectItem key={version.id} value={version.id}>
-              {version.name}
-            </SelectItem>
-          ))}
-        </Select>
-      </div>
-
+    <div className="flex items-center space-x-6">
       {/* Version Type Toggle */}
-      <div>
-        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-          Content Type
-        </label>
-        <div className="flex space-x-2">
-          <Button
-            variant={selectedVersionType === 'audio' ? 'primary' : 'outline'}
-            size="sm"
-            onClick={() => handleVersionTypeChange('audio')}
-            className="flex-1"
-          >
-            Audio
-          </Button>
-          <Button
-            variant={selectedVersionType === 'text' ? 'primary' : 'outline'}
-            size="sm"
-            onClick={() => handleVersionTypeChange('text')}
-            className="flex-1"
-          >
-            Text
-          </Button>
-        </div>
+      <div className="flex items-center space-x-2">
+        <Button
+          variant={selectedVersionType === 'audio' ? 'primary' : 'outline'}
+          size="sm"
+          onClick={() => handleVersionTypeChange('audio')}
+        >
+          Audio
+        </Button>
+        <Button
+          variant={selectedVersionType === 'text' ? 'primary' : 'outline'}
+          size="sm"
+          onClick={() => handleVersionTypeChange('text')}
+        >
+          Text
+        </Button>
       </div>
 
       {/* Specific Version Selector */}
-      <div>
-        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-          {selectedVersionType === 'audio' ? 'Audio Version' : 'Text Version'}
-        </label>
+      <div className="min-w-[200px]">
         <Select 
           value={currentVersionId} 
           onValueChange={handleVersionChange}
@@ -105,11 +69,6 @@ export const BibleProgressVersionSelectors: React.FC<BibleProgressVersionSelecto
             </SelectItem>
           ))}
         </Select>
-        {availableVersions.length === 0 && (
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-            No {selectedVersionType} versions available for this project
-          </p>
-        )}
       </div>
     </div>
   );

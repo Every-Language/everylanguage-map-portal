@@ -5,7 +5,6 @@ import { useDashboardData } from '../../hooks/useDashboardData';
 import { ProgressWidgets } from './ProgressWidgets';
 import { RecentActivity } from './RecentActivity';
 import { ProjectInfo } from './ProjectInfo';
-import { BibleVersionSelector } from './BibleVersionSelector';
 
 export const DashboardOverview: React.FC = () => {
   const { user, dbUser } = useAuth();
@@ -40,17 +39,7 @@ export const DashboardOverview: React.FC = () => {
         <p className="text-neutral-600 dark:text-neutral-400 mt-1">
           Welcome back, {dbUser?.first_name || user?.email?.split('@')[0]}!
         </p>
-        <p className="text-lg font-medium text-neutral-800 dark:text-neutral-200 mt-2">
-          {selectedProject.name}
-        </p>
       </div>
-
-      {/* Bible Version Selector */}
-      <BibleVersionSelector
-        selectedVersion={dashboardData.selectedBibleVersion}
-        onVersionChange={dashboardData.setSelectedBibleVersion}
-        versions={dashboardData.bibleVersions}
-      />
 
       {/* Progress Widgets */}
       <ProgressWidgets

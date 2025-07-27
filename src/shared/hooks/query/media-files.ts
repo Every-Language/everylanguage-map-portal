@@ -274,6 +274,227 @@ export function useMediaFilesByProject(projectId: string | null) {
   });
 }
 
+// Hook to fetch media files by project with server-side pagination and filtering
+export function useMediaFilesByProjectPaginated(
+  projectId: string | null,
+  options: {
+    page: number
+    pageSize: number
+    audioVersionId?: string | null
+    bookId?: string | null  
+    chapterId?: string | null
+    publishStatus?: string | null
+    uploadStatus?: string | null
+    searchText?: string | null
+    sortField?: string | null
+    sortDirection?: 'asc' | 'desc' | null
+    showDeleted?: boolean
+  }
+) {
+  return useQuery({
+    queryKey: ['media_files_by_project_paginated', projectId, options],
+    queryFn: async () => {
+      if (!projectId) return { data: [], count: 0 }
+      
+      // First get audio versions for this project
+      const { data: audioVersions, error: audioVersionsError } = await supabase
+        .from('audio_versions')
+        .select('id')
+        .eq('project_id', projectId);
+
+      if (audioVersionsError) throw audioVersionsError;
+      if (!audioVersions || audioVersions.length === 0) {
+        return { data: [], count: 0 };
+      }
+
+      const audioVersionIds = audioVersions.map(v => v.id);
+      
+      // Build the query with proper joins
+      let query = supabase
+        .from('media_files')
+        .select(`
+          id,
+          audio_version_id,
+          chapter_id,
+          start_verse_id,
+          end_verse_id,
+          check_status,
+          created_at,
+          created_by,
+          deleted_at,
+          duration_seconds,
+          file_size,
+          is_bible_audio,
+          language_entity_id,
+          media_type,
+          publish_status,
+          remote_path,
+          upload_status,
+          updated_at,
+          version,
+          chapter:chapters!chapter_id(
+            id,
+            chapter_number,
+            book:books!book_id(
+              id,
+              name,
+              global_order
+            )
+          ),
+          start_verse:verses!start_verse_id(
+            id,
+            verse_number
+          ),
+          end_verse:verses!end_verse_id(
+            id,
+            verse_number
+          )
+        `, { count: 'exact' })
+        .in('audio_version_id', audioVersionIds)
+      
+      // Apply deleted filter
+      if (options.showDeleted) {
+        query = query.not('deleted_at', 'is', null)
+      } else {
+        query = query.is('deleted_at', null)
+      }
+      
+      // Apply filters
+      if (options.audioVersionId && options.audioVersionId !== 'all') {
+        query = query.eq('audio_version_id', options.audioVersionId)
+      }
+      
+      if (options.bookId && options.bookId !== 'all') {
+        // First get chapter IDs for the selected book
+        const { data: bookChapters } = await supabase
+          .from('chapters')
+          .select('id')
+          .eq('book_id', options.bookId);
+        
+        if (bookChapters && bookChapters.length > 0) {
+          const chapterIds = bookChapters.map(ch => ch.id);
+          query = query.in('chapter_id', chapterIds);
+        } else {
+          // No chapters for this book, return empty result
+          return { data: [], count: 0 };
+        }
+      }
+      
+      if (options.chapterId && options.chapterId !== 'all') {
+        query = query.eq('chapter_id', options.chapterId)
+      }
+      
+      if (options.publishStatus && options.publishStatus !== 'all') {
+        query = query.eq('publish_status', options.publishStatus as 'pending' | 'published' | 'archived')
+      }
+      
+             if (options.uploadStatus && options.uploadStatus !== 'all') {
+         query = query.eq('upload_status', options.uploadStatus as 'pending' | 'uploading' | 'completed' | 'failed')
+       }
+      
+      // Search functionality - search in filenames and verse references
+      if (options.searchText && options.searchText.trim()) {
+        const searchTerm = options.searchText.trim()
+        // Search in remote_path (which contains filename) only for now to avoid complex OR syntax
+        query = query.ilike('remote_path', `%${searchTerm}%`)
+      }
+      
+      // Apply sorting
+      const sortField = options.sortField || 'created_at'
+      const sortDirection = options.sortDirection || 'desc'
+      
+      if (sortField === 'verse_reference') {
+        // Sort by created_at for now since complex nested sorting is challenging
+        query = query.order('created_at', { ascending: sortDirection === 'asc' })
+      } else if (sortField === 'filename') {
+        query = query.order('remote_path', { ascending: sortDirection === 'asc' })
+      } else {
+        query = query.order(sortField, { ascending: sortDirection === 'asc' })
+      }
+      
+      // Apply pagination
+      const startIndex = (options.page - 1) * options.pageSize
+      query = query.range(startIndex, startIndex + options.pageSize - 1)
+      
+      const { data, error, count } = await query
+      
+      if (error) throw error
+      
+            // Transform the data to include enhanced verse information (same as original hook)
+      const enhancedFiles: MediaFileWithVerseInfo[] = (data || []).map(file => {
+        // Debug logging to see what we're getting
+        console.log('Processing file:', {
+          id: file.id,
+          chapter: file.chapter,
+          start_verse: file.start_verse,
+          end_verse: file.end_verse,
+          chapter_id: file.chapter_id,
+          start_verse_id: file.start_verse_id,
+          end_verse_id: file.end_verse_id
+        });
+
+        const chapter = file.chapter as { 
+          id: string; 
+          chapter_number: number; 
+          book?: { id: string; name: string; global_order: number } 
+        };
+        const startVerse = file.start_verse as { 
+          id: string; 
+          verse_number: number; 
+        };
+        const endVerse = file.end_verse as { 
+          id: string; 
+          verse_number: number; 
+        };
+        const book = chapter?.book;
+
+        const filename = file.remote_path?.split('/').pop() || 'Unknown';
+
+        let verseReference = 'Unknown';
+        
+        // Debug the verse reference construction
+        console.log('Verse reference construction:', {
+          bookName: book?.name,
+          chapterNumber: chapter?.chapter_number,
+          startVerseNumber: startVerse?.verse_number,
+          endVerseNumber: endVerse?.verse_number
+        });
+        
+        if (book?.name && chapter?.chapter_number !== undefined && startVerse?.verse_number !== undefined) {
+          if (startVerse.verse_number === endVerse?.verse_number || !endVerse) {
+            verseReference = `${book.name} ${chapter.chapter_number}:${startVerse.verse_number}`;
+          } else {
+            verseReference = `${book.name} ${chapter.chapter_number}:${startVerse.verse_number}-${endVerse.verse_number}`;
+          }
+        } else {
+          // Provide more specific error info
+          if (!book?.name) verseReference = 'Unknown Book';
+          else if (chapter?.chapter_number === undefined) verseReference = 'Unknown Chapter';
+          else if (startVerse?.verse_number === undefined) verseReference = 'Unknown Verse';
+        }
+
+        return {
+          ...file,
+          filename,
+          verse_reference: verseReference,
+          book_id: book?.id || null,
+          book_name: book?.name || null,
+          book_global_order: book?.global_order || null,
+          chapter_number: chapter?.chapter_number || null,
+          start_verse_number: startVerse?.verse_number || null,
+          end_verse_number: endVerse?.verse_number || null
+        } as MediaFileWithVerseInfo;
+      });
+
+      return { 
+        data: enhancedFiles, 
+        count: count || 0 
+      }
+    },
+    enabled: !!projectId,
+  })
+}
+
 // Hook to fetch media files by book and chapter
 export function useMediaFilesByBookChapter(bookId: string | null, chapterId: string | null) {
   return useFetchCollection('media_files', {
@@ -447,6 +668,157 @@ export function useSoftDeleteMediaFiles() {
     },
   });
 } 
+
+/**
+ * Mutation to restore (undelete) media files
+ */
+export function useRestoreMediaFiles() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ fileIds }: { fileIds: string[] }) => {
+      const { data, error } = await supabase
+        .from('media_files')
+        .update({ deleted_at: null })
+        .in('id', fileIds)
+        .select();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      // Invalidate and refetch media files
+      queryClient.invalidateQueries({ queryKey: ['media_files'] });
+      queryClient.invalidateQueries({ queryKey: ['media_files_with_verse_info'] });
+      queryClient.invalidateQueries({ queryKey: ['deleted_media_files'] });
+    },
+  });
+}
+
+/**
+ * Hook to fetch deleted media files for recovery
+ */
+export function useDeletedMediaFilesByProject(projectId: string | null) {
+  return useQuery({
+    queryKey: ['deleted_media_files', projectId],
+    queryFn: async () => {
+      if (!projectId) return [];
+      
+      // First get audio versions for this project
+      const { data: audioVersions, error: audioVersionsError } = await supabase
+        .from('audio_versions')
+        .select('id')
+        .eq('project_id', projectId);
+
+      if (audioVersionsError) {
+        console.error('Error fetching audio versions:', audioVersionsError);
+        throw audioVersionsError;
+      }
+
+      if (!audioVersions || audioVersions.length === 0) {
+        return []; // No audio versions means no media files for this project
+      }
+
+      const audioVersionIds = audioVersions.map(v => v.id);
+      
+      const { data, error } = await supabase
+        .from('media_files')
+        .select(`
+          id,
+          audio_version_id,
+          chapter_id,
+          start_verse_id,
+          end_verse_id,
+          check_status,
+          created_at,
+          created_by,
+          deleted_at,
+          duration_seconds,
+          file_size,
+          is_bible_audio,
+          language_entity_id,
+          media_type,
+          publish_status,
+          remote_path,
+          upload_status,
+          updated_at,
+          version,
+          chapter:chapters!chapter_id(
+            id,
+            chapter_number,
+            book:books!book_id(
+              id,
+              name,
+              global_order
+            )
+          ),
+          start_verse:verses!start_verse_id(
+            id,
+            verse_number
+          ),
+          end_verse:verses!end_verse_id(
+            id,
+            verse_number
+          )
+        `)
+        .in('audio_version_id', audioVersionIds)
+        .not('deleted_at', 'is', null) // Only fetch soft-deleted files
+        .order('deleted_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching deleted media files:', error);
+        throw error;
+      }
+
+      // Transform the data to include enhanced verse information
+      const enhancedFiles: MediaFileWithVerseInfo[] = (data || []).map(file => {
+        const chapter = file.chapter as { 
+          id: string; 
+          chapter_number: number; 
+          book?: { id: string; name: string; global_order: number } 
+        };
+        const startVerse = file.start_verse as { 
+          id: string; 
+          verse_number: number; 
+        };
+        const endVerse = file.end_verse as { 
+          id: string; 
+          verse_number: number; 
+        };
+        const book = chapter?.book;
+
+        const filename = file.remote_path?.split('/').pop() || 'Unknown';
+
+        let verseReference = 'Unknown';
+        if (book?.name && chapter?.chapter_number && startVerse?.verse_number) {
+          if (startVerse.verse_number === endVerse?.verse_number) {
+            verseReference = `${book.name} ${chapter.chapter_number}:${startVerse.verse_number}`;
+          } else {
+            verseReference = `${book.name} ${chapter.chapter_number}:${startVerse.verse_number}-${endVerse?.verse_number || startVerse.verse_number}`;
+          }
+        }
+
+        return {
+          ...file,
+          filename,
+          verse_reference: verseReference,
+          book_name: book?.name || 'Unknown',
+          chapter_number: chapter?.chapter_number || 0,
+          start_verse_number: startVerse?.verse_number || 0,
+          end_verse_number: endVerse?.verse_number || startVerse?.verse_number || 0,
+          book_id: book?.id || '',
+          chapter_id: chapter?.id || '',
+          start_verse_id: startVerse?.id || '',
+          end_verse_id: endVerse?.id || '',
+          book_global_order: book?.global_order || 999,
+        } as MediaFileWithVerseInfo;
+      });
+
+      return enhancedFiles;
+    },
+    enabled: !!projectId,
+  });
+}
 
 // Hook to fetch verse timestamps for multiple media files
 export function useMediaFilesVerseTimestamps(mediaFileIds: string[]) {

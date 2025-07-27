@@ -11,7 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
-
+gi
 # Environment files
 .env
 .env.local

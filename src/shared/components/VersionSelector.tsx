@@ -22,6 +22,9 @@ interface VersionSelectorProps {
   placeholder?: string;
   searchPlaceholder?: string;
   
+  // Control "All Versions" option
+  allowAllVersions?: boolean;
+  
   // Optional additional content
   children?: React.ReactNode;
 }
@@ -36,10 +39,11 @@ export const VersionSelector: React.FC<VersionSelectorProps> = ({
   searchable = false,
   placeholder = "Select version",
   searchPlaceholder = "Search versions...",
+  allowAllVersions = true,
   children
 }) => {
   const versionOptions = [
-    { value: 'all', label: 'All Versions' },
+    ...(allowAllVersions ? [{ value: 'all', label: 'All Versions' }] : []),
     ...(versions?.map(version => ({ value: version.id, label: version.name })) || [])
   ];
 
@@ -77,7 +81,7 @@ export const VersionSelector: React.FC<VersionSelectorProps> = ({
                   onValueChange={onVersionChange}
                   disabled={versionsLoading}
                 >
-                  <SelectItem value="all">All Versions</SelectItem>
+                  {allowAllVersions && <SelectItem value="all">All Versions</SelectItem>}
                   {versions?.map((version) => (
                     <SelectItem key={version.id} value={version.id}>
                       {version.name}

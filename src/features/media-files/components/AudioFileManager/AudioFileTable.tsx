@@ -18,7 +18,8 @@ import {
   ArrowDownTrayIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  ClockIcon
+  ClockIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 import type { MediaFileWithVerseInfo } from '../../../../shared/hooks/query/media-files';
 import { useMediaFilesVerseTimestamps } from '../../../../shared/hooks/query/media-files';
@@ -47,12 +48,13 @@ interface AudioFileTableProps {
   
   // Actions
   handleSelectAll: (checked: boolean) => void;
-  handleRowSelect: (id: string, checked: boolean) => void;
+  handleRowSelect: (id: string, checked?: boolean) => void;
   handleEditClick: (file: MediaFileWithVerseInfo) => void;
   handlePublishStatusChange: (id: string, status: PublishStatus) => void;
   handlePlay: (file: MediaFileWithVerseInfo) => void;
   handleDownload: (file: MediaFileWithVerseInfo) => void;
   handleVerseMarking: (file: MediaFileWithVerseInfo) => void;
+  handleDelete: (file: MediaFileWithVerseInfo) => void;
   
   // Bulk operations
   executeBulkOperation?: (operationId: string) => void;
@@ -95,6 +97,7 @@ export const AudioFileTable: React.FC<AudioFileTableProps> = ({
   handlePlay,
   handleDownload,
   handleVerseMarking,
+  handleDelete,
   executeBulkOperation,
   clearSelection,
   downloadState,
@@ -196,6 +199,9 @@ export const AudioFileTable: React.FC<AudioFileTableProps> = ({
     return { hasTimestamps: true, count: timestamps.length };
   };
 
+  // Check if we're viewing deleted files by checking if any files have deleted_at
+  const isViewingDeleted = mediaFiles.some(file => file.deleted_at);
+
   return (
     <Card>
       <CardHeader>
@@ -208,14 +214,25 @@ export const AudioFileTable: React.FC<AudioFileTableProps> = ({
           {onSearchChange && (
             <div className="w-64">
               <Input
-                placeholder="Search by filename or verse reference..."
+                placeholder="Search audio files..."
                 value={searchText}
                 onChange={(e) => onSearchChange(e.target.value)}
-                className="dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
               />
             </div>
           )}
         </div>
+        
+        {/* Deleted Files Warning Banner */}
+        {isViewingDeleted && (
+          <div className="mt-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <div className="h-2 w-2 bg-red-500 rounded-full animate-pulse"></div>
+              <span className="text-sm font-medium text-red-800 dark:text-red-200">
+                ⚠️ You are currently viewing DELETED audio files. These files are not visible to users.
+              </span>
+            </div>
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -231,32 +248,44 @@ export const AudioFileTable: React.FC<AudioFileTableProps> = ({
           <div className="space-y-4 relative">
             {/* Floating Bulk Operations */}
             {selectedItems.length > 0 && executeBulkOperation && clearSelection && (
-              <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 bg-blue-50 dark:bg-blue-900/90 border border-blue-200 dark:border-blue-700 rounded-full px-4 py-3 shadow-lg backdrop-blur-sm">
-                <div className="flex items-center space-x-3">
-                  <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
                     {selectedItems.length} audio file{selectedItems.length !== 1 ? 's' : ''} selected
                   </span>
-                  <Select 
-                    value="bulk-action" 
-                    onValueChange={(value) => {
-                      if (value !== 'bulk-action') {
-                        executeBulkOperation(value);
-                      }
-                    }}
-                  >
-                    <SelectItem value="bulk-action">Change Status</SelectItem>
-                    <SelectItem value="pending">Set to Pending</SelectItem>
-                    <SelectItem value="published">Set to Published</SelectItem>
-                    <SelectItem value="archived">Set to Archived</SelectItem>
-                  </Select>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={clearSelection}
-                    className="text-blue-700 border-blue-300 hover:bg-blue-100 dark:text-blue-300 dark:border-blue-600 dark:hover:bg-blue-800"
-                  >
-                    Clear
-                  </Button>
+                  <div className="flex items-center space-x-2">
+                    <Select 
+                      value="bulk-action" 
+                      onValueChange={(value) => {
+                        if (value !== 'bulk-action') {
+                          executeBulkOperation(value);
+                        }
+                      }}
+                    >
+                      <SelectItem value="bulk-action">Change Status</SelectItem>
+                      <SelectItem value="pending">Set to Pending</SelectItem>
+                      <SelectItem value="published">Set to Published</SelectItem>
+                      <SelectItem value="archived">Set to Archived</SelectItem>
+                      <SelectItem value="restore">Restore</SelectItem>
+                    </Select>
+                    
+                    {/* Delete Button */}
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => executeBulkOperation('soft_delete')}
+                    >
+                      Delete Selected
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={clearSelection}
+                    >
+                      Clear Selection
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
@@ -348,8 +377,13 @@ export const AudioFileTable: React.FC<AudioFileTableProps> = ({
 
                     return (
                       <React.Fragment key={file.id}>
-                        {/* Main row */}
-                        <tr className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <tr 
+                          className={`border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 ${
+                            file.deleted_at 
+                              ? 'bg-red-50/50 dark:bg-red-900/10 opacity-75' 
+                              : ''
+                          }`}
+                        >
                           <td className="p-3">
                             <Checkbox
                               checked={selectedItems.includes(file.id)}
@@ -420,48 +454,77 @@ export const AudioFileTable: React.FC<AudioFileTableProps> = ({
                           </td>
                           <td className="p-3">
                             <div className="flex items-center space-x-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handlePlay(file)}
-                                disabled={!file.remote_path || loadingAudioId === file.id}
-                                title={loadingAudioId === file.id ? "Loading audio..." : "Play audio"}
-                              >
-                                {loadingAudioId === file.id ? (
-                                  <LoadingSpinner size="sm" />
-                                ) : (
-                                  <PlayIcon className="h-4 w-4" />
-                                )}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleEditClick(file)}
-                                title="Edit"
-                              >
-                                <PencilIcon className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleDownload(file)}
-                                disabled={downloadState.isDownloading && downloadState.downloadingFileId === file.id}
-                                title="Download"
-                              >
-                                {downloadState.isDownloading && downloadState.downloadingFileId === file.id ? (
-                                  <LoadingSpinner size="sm" />
-                                ) : (
-                                  <ArrowDownTrayIcon className="h-4 w-4" />
-                                )}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleVerseMarking(file)}
-                                title="Verse Marking"
-                              >
-                                <ClockIcon className="h-4 w-4" />
-                              </Button>
+                              {file.deleted_at ? (
+                                // Deleted file - only show restore button
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    handleRowSelect(file.id);
+                                    if (executeBulkOperation) {
+                                      executeBulkOperation('restore');
+                                    }
+                                  }}
+                                  title="Restore file"
+                                  className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-200"
+                                >
+                                  <span className="text-sm">Restore</span>
+                                </Button>
+                              ) : (
+                                // Active file - show all action buttons
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handlePlay(file)}
+                                    disabled={!file.remote_path || loadingAudioId === file.id}
+                                    title={loadingAudioId === file.id ? "Loading audio..." : "Play audio"}
+                                  >
+                                    {loadingAudioId === file.id ? (
+                                      <LoadingSpinner size="sm" />
+                                    ) : (
+                                      <PlayIcon className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleEditClick(file)}
+                                    title="Edit"
+                                  >
+                                    <PencilIcon className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleDownload(file)}
+                                    disabled={downloadState.isDownloading && downloadState.downloadingFileId === file.id}
+                                    title="Download"
+                                  >
+                                    {downloadState.isDownloading && downloadState.downloadingFileId === file.id ? (
+                                      <LoadingSpinner size="sm" />
+                                    ) : (
+                                      <ArrowDownTrayIcon className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleVerseMarking(file)}
+                                    title="Verse Marking"
+                                  >
+                                    <ClockIcon className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleDelete(file)}
+                                    title="Delete"
+                                  >
+                                    <TrashIcon className="h-4 w-4 text-red-600 dark:text-red-400" />
+                                  </Button>
+                                </>
+                              )}
                             </div>
                           </td>
                         </tr>

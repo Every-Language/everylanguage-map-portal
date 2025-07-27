@@ -12,49 +12,28 @@ import {
   Input,
   Pagination
 } from '../../../../shared/design-system';
+import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 import type { VerseTextWithRelations } from '../../../../shared/hooks/query/text-versions';
-
-interface TextVersion {
-  id: string;
-  name: string;
-}
-
-type PublishStatus = 'pending' | 'published' | 'archived';
-type SortField = 'verse_text' | 'verse_reference' | 'version' | 'publish_status';
-
-
 
 interface BibleTextTableProps {
   filteredAndSortedTexts: VerseTextWithRelations[];
   isLoading: boolean;
-  textVersions: TextVersion[];
-  
-  // Sorting
-  sortField: string | null;
-  sortDirection: 'asc' | 'desc' | null;
-  handleSort: (field: SortField) => void;
-  
-  // Search
-  searchText?: string;
-  onSearchChange?: (value: string) => void;
-  
-  // Selection
+  sortField: string;
+  sortDirection: 'asc' | 'desc';
+  handleSort: (field: string) => void;
+  searchText: string;
+  onSearchChange: (value: string) => void;
   selectedItems: string[];
   allCurrentPageSelected: boolean;
   someCurrentPageSelected: boolean;
-  handleSelectAll: (checked: boolean) => void;
-  handleRowSelect: (id: string, checked: boolean) => void;
-  
-  // Actions
+  handleSelectAll: () => void;
+  handleRowSelect: (id: string) => void;
   handleEditClick: (text: VerseTextWithRelations) => void;
-  handlePublishStatusChange: (id: string, status: PublishStatus) => void;
-  
-  // Bulk operations
-  executeBulkOperation: (operationId: string) => void;
+  handlePublishStatusChange: (textId: string, status: string) => void;
+  executeBulkOperation: (operation: string) => void;
   clearSelection: () => void;
-  
-  // Modals
   openModal: (modalId: string) => void;
+  handleDelete: (textId: string) => void;
   
   // Pagination props
   currentPage?: number;
@@ -68,7 +47,6 @@ interface BibleTextTableProps {
 export const BibleTextTable: React.FC<BibleTextTableProps> = ({
   filteredAndSortedTexts,
   isLoading,
-  textVersions,
   sortField,
   sortDirection,
   handleSort,
@@ -81,6 +59,7 @@ export const BibleTextTable: React.FC<BibleTextTableProps> = ({
   handleRowSelect,
   handleEditClick,
   handlePublishStatusChange,
+  handleDelete,
   executeBulkOperation,
   clearSelection,
   openModal,
@@ -91,6 +70,9 @@ export const BibleTextTable: React.FC<BibleTextTableProps> = ({
   onPageChange,
   onPageSizeChange
 }) => {
+  // Check if we're viewing deleted texts by checking if any texts have deleted_at
+  const isViewingDeleted = filteredAndSortedTexts.some(text => text.deleted_at);
+
   return (
     <Card>
       <CardHeader>
@@ -111,6 +93,18 @@ export const BibleTextTable: React.FC<BibleTextTableProps> = ({
             </div>
           )}
         </div>
+        
+        {/* Deleted Texts Warning Banner */}
+        {isViewingDeleted && (
+          <div className="mt-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <div className="h-2 w-2 bg-red-500 rounded-full animate-pulse"></div>
+              <span className="text-sm font-medium text-red-800 dark:text-red-200">
+                ⚠️ You are currently viewing DELETED verse texts. These texts are not visible to users.
+              </span>
+            </div>
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -129,32 +123,44 @@ export const BibleTextTable: React.FC<BibleTextTableProps> = ({
           <div className="space-y-4 relative">
             {/* Floating Bulk Operations */}
             {selectedItems.length > 0 && (
-              <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 bg-blue-50 dark:bg-blue-900/90 border border-blue-200 dark:border-blue-700 rounded-full px-4 py-3 shadow-lg backdrop-blur-sm">
-                <div className="flex items-center space-x-3">
-                  <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
                     {selectedItems.length} verse text{selectedItems.length !== 1 ? 's' : ''} selected
                   </span>
-                  <Select 
-                    value="bulk-action" 
-                    onValueChange={(value) => {
-                      if (value !== 'bulk-action') {
-                        executeBulkOperation(value);
-                      }
-                    }}
-                  >
-                    <SelectItem value="bulk-action">Change Status</SelectItem>
-                    <SelectItem value="pending">Set to Pending</SelectItem>
-                    <SelectItem value="published">Set to Published</SelectItem>
-                    <SelectItem value="archived">Set to Archived</SelectItem>
-                  </Select>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={clearSelection}
-                    className="text-blue-700 border-blue-300 hover:bg-blue-100 dark:text-blue-300 dark:border-blue-600 dark:hover:bg-blue-800"
-                  >
-                    Clear
-                  </Button>
+                  <div className="flex items-center space-x-2">
+                    <Select 
+                      value="bulk-action" 
+                      onValueChange={(value) => {
+                        if (value !== 'bulk-action') {
+                          executeBulkOperation(value);
+                        }
+                      }}
+                    >
+                      <SelectItem value="bulk-action">Change Status</SelectItem>
+                      <SelectItem value="pending">Set to Pending</SelectItem>
+                      <SelectItem value="published">Set to Published</SelectItem>
+                      <SelectItem value="archived">Set to Archived</SelectItem>
+                      <SelectItem value="restore">Restore</SelectItem>
+                    </Select>
+                    
+                    {/* Delete Button */}
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => executeBulkOperation('soft_delete')}
+                    >
+                      Delete Selected
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={clearSelection}
+                    >
+                      Clear Selection
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
@@ -179,12 +185,12 @@ export const BibleTextTable: React.FC<BibleTextTableProps> = ({
                     </th>
                     <th className="text-left p-3 font-medium text-gray-900 dark:text-gray-100">
                       <button
-                        onClick={() => handleSort('version')}
-                        className="flex items-center space-x-1 hover:text-primary-600 dark:hover:text-primary-400"
+                        onClick={() => handleSort('verse_reference')}
+                        className="flex items-center space-x-1 hover:text-blue-600 dark:hover:text-blue-400"
                       >
-                        <span>Version</span>
-                        {sortField === 'version' && (
-                          <span className="text-primary-600 dark:text-primary-400">
+                        <span>Verse Reference</span>
+                        {sortField === 'verse_reference' && (
+                          <span className="text-blue-600 dark:text-blue-400">
                             {sortDirection === 'asc' ? '↑' : '↓'}
                           </span>
                         )}
@@ -221,17 +227,28 @@ export const BibleTextTable: React.FC<BibleTextTableProps> = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredAndSortedTexts.map((text: VerseTextWithRelations) => (
-                    <tr key={text.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  {filteredAndSortedTexts.map((text) => (
+                    <tr 
+                      key={text.id} 
+                      className={`border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 ${
+                        text.deleted_at 
+                          ? 'bg-red-50/50 dark:bg-red-900/10 opacity-75' 
+                          : ''
+                      }`}
+                    >
                       <td className="p-3">
                         <Checkbox
                           checked={selectedItems.includes(text.id)}
-                          onCheckedChange={(checked) => handleRowSelect(text.id, checked as boolean)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              handleRowSelect(text.id);
+                            }
+                          }}
                         />
                       </td>
                       <td className="p-3">
                         <span className="text-sm text-gray-600 dark:text-gray-400">
-                          {textVersions?.find(v => v.id === text.text_version_id)?.name || 'Unknown'}
+                          {text.verses?.chapters?.books?.name || 'Unknown'} {text.verses?.chapters?.chapter_number || 0}:{text.verses?.verse_number || 0}
                         </span>
                       </td>
                       <td className="p-3">
@@ -245,7 +262,7 @@ export const BibleTextTable: React.FC<BibleTextTableProps> = ({
                         <div className="flex items-center space-x-2">
                           <Select 
                             value={text.publish_status || 'pending'} 
-                            onValueChange={(value) => handlePublishStatusChange(text.id, value as PublishStatus)}
+                            onValueChange={(value) => handlePublishStatusChange(text.id, value)}
                           >
                             <SelectItem value="pending">Pending</SelectItem>
                             <SelectItem value="published">Published</SelectItem>
@@ -254,14 +271,41 @@ export const BibleTextTable: React.FC<BibleTextTableProps> = ({
                         </div>
                       </td>
                       <td className="p-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEditClick(text)}
-                          className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
-                        >
-                          Edit
-                        </Button>
+                        {text.deleted_at ? (
+                          // Deleted text - only show restore button
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              handleRowSelect(text.id);
+                              executeBulkOperation('restore');
+                            }}
+                            className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-200"
+                          >
+                            <span className="text-sm">Restore</span>
+                          </Button>
+                        ) : (
+                          // Active text - show edit and delete buttons
+                          <div className="flex space-x-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditClick(text)}
+                              className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+                            >
+                              <PencilIcon className="h-4 w-4 mr-1" />
+                              Edit
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDelete(text.id)}
+                              className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-200"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}

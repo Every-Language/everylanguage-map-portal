@@ -9,6 +9,7 @@ import { CornerAudioPlayer } from './shared/components/CornerAudioPlayer';
 import { ThemeProvider } from './shared/theme';
 import { ToastManager } from './shared/design-system/hooks/useToast';
 import { LoadingSpinner } from './shared/design-system';
+import { TextUploadProgress } from './features/upload/components/TextUploadProgress';
 
 // Lazy load non-critical pages for better performance
 const BibleProgressPage = React.lazy(() => import('./app/pages/BibleProgressPage').then(module => ({ default: module.BibleProgressPage })));
@@ -42,6 +43,7 @@ function App() {
           <ProjectProvider>
             <Router>
               <CornerAudioPlayer />
+              <TextUploadProgress />
               <Routes>
                 {/* Public routes */}
                 <Route path="/login" element={<LoginPage />} />
@@ -60,7 +62,7 @@ function App() {
                 
                 {/* Other protected routes without layout */}
                 <Route path="/upload" element={<ProtectedRoute><Suspense fallback={<PageLoadingFallback />}><AudioUploadPage /></Suspense></ProtectedRoute>} />
-                <Route path="/projects/new" element={<ProtectedRoute><Suspense fallback={<PageLoadingFallback />}><ProjectCreationPage /></Suspense></ProtectedRoute>} />
+                <Route path="/projects/create" element={<ProtectedRoute><Suspense fallback={<PageLoadingFallback />}><ProjectCreationPage /></Suspense></ProtectedRoute>} />
                 
                 {/* Default redirect */}
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />

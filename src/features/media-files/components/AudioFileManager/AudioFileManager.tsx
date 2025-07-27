@@ -1,7 +1,7 @@
 import React from 'react';
 import { DataManagementLayout } from '../../../../shared/components/DataManagementLayout';
 import { VersionSelector } from '../../../../shared/components';
-import { AudioUploadModal, UploadProgressDisplay } from '../../../upload/components';
+import { AudioUploadModal } from '../../../upload/components';
 import { useAudioFileManagement } from '../../hooks/useAudioFileManagement';
 import { AudioFileFiltersComponent } from './AudioFileFilters';
 import { AudioFileTable } from './AudioFileTable';
@@ -9,7 +9,14 @@ import { AudioFileEditModal } from './AudioFileEditModal';
 import { AudioVersionModal } from './AudioVersionModal';
 import { VerseMarkingModal } from './VerseMarkingModal';
 import { VerseTimestampImportModal } from './VerseTimestampImportModal';
-import { Button, Alert, Progress, Card, CardContent } from '../../../../shared/design-system';
+import { ConfirmationModal } from '../../../../shared/components/ConfirmationModal';
+import { 
+  Card, 
+  CardContent, 
+  Button,
+  Alert, 
+  Progress 
+} from '../../../../shared/design-system';
 import { PlusIcon, ClockIcon } from '@heroicons/react/24/outline';
 
 interface AudioFileManagerProps {
@@ -30,6 +37,7 @@ export const AudioFileManager: React.FC<AudioFileManagerProps> = ({
       onVersionChange={(versionId) => audioFileState.handleFilterChange('audioVersionId', versionId)}
       versions={audioFileState.audioVersions}
       versionsLoading={audioFileState.isLoading}
+      allowAllVersions={false}
     >
       <Button 
         variant="outline" 
@@ -85,6 +93,7 @@ export const AudioFileManager: React.FC<AudioFileManagerProps> = ({
       handlePlay={audioFileState.handlePlay}
       handleDownload={audioFileState.handleDownload}
       handleVerseMarking={audioFileState.handleVerseMarking}
+      handleDelete={audioFileState.handleDelete}
       executeBulkOperation={audioFileState.executeBulkOperation}
       clearSelection={audioFileState.clearSelection}
       downloadState={audioFileState.downloadState}
@@ -103,7 +112,6 @@ export const AudioFileManager: React.FC<AudioFileManagerProps> = ({
       <AudioUploadModal
         open={audioFileState.isModalOpen('upload')}
         onOpenChange={(open) => open ? audioFileState.openModal('upload') : audioFileState.closeModal()}
-        onUploadComplete={audioFileState.handleUploadComplete}
       />
 
       <AudioFileEditModal
@@ -143,6 +151,18 @@ export const AudioFileManager: React.FC<AudioFileManagerProps> = ({
         onImportComplete={audioFileState.handleUploadComplete}
         selectedAudioVersionId={audioFileState.filters.audioVersionId !== 'all' ? audioFileState.filters.audioVersionId : undefined}
       />
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={audioFileState.confirmationModal.isOpen}
+        onClose={audioFileState.handleCancelConfirmation}
+        onConfirm={audioFileState.handleConfirmAction}
+        title={audioFileState.confirmationModal.type === 'delete' ? 'Delete Files' : 'Restore Files'}
+        message={audioFileState.confirmationModal.message}
+        confirmText={audioFileState.confirmationModal.type === 'delete' ? 'Delete' : 'Restore'}
+        variant={audioFileState.confirmationModal.type === 'delete' ? 'danger' : 'info'}
+        isLoading={audioFileState.softDeleteFiles.isPending || audioFileState.restoreFiles.isPending}
+      />
     </>
   );
 
@@ -151,11 +171,6 @@ export const AudioFileManager: React.FC<AudioFileManagerProps> = ({
       {/* Version Selector - Sticky */}
       <div className="sticky top-0 z-30 bg-white dark:bg-gray-900">
         {versionSelector}
-      </div>
-
-      {/* Upload Progress Display - Sticky below version selector */}
-      <div className="sticky top-[84px] z-20 bg-white dark:bg-gray-900">
-        <UploadProgressDisplay />
       </div>
 
       {/* Download Error Alert */}

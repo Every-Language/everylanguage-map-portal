@@ -11,6 +11,7 @@ import {
 } from '../../design-system';
 import { SidebarNavigation } from './SidebarNavigation';
 import { SidebarProjectSelector } from './SidebarProjectSelector';
+import { SidebarBibleVersionSelector } from './SidebarBibleVersionSelector';
 
 export const Sidebar: React.FC = () => {
   const { user, dbUser, signOut } = useAuth();
@@ -56,6 +57,11 @@ export const Sidebar: React.FC = () => {
         {/* Project Selector */}
         <div className="mb-6">
           <SidebarProjectSelector />
+        </div>
+        
+        {/* Bible Version Selector */}
+        <div className="mb-6">
+          <SidebarBibleVersionSelector />
         </div>
         
         {/* Navigation */}

@@ -64,7 +64,7 @@ function RegionTreeNode({
         className={`group flex items-center gap-2 py-2 px-3 rounded-md cursor-pointer transition-all ${
           isSelected
             ? 'bg-primary-100 text-primary-900 ring-2 ring-primary-500'
-            : 'hover:bg-neutral-100 text-neutral-700'
+            : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300 dark:hover:text-neutral-200'
         }`}
         style={{ paddingLeft: `${indentLevel}rem` }}
         onClick={handleSelect}
@@ -220,7 +220,7 @@ export function RegionSelectionStep() {
               variant="ghost"
               size="sm"
               onClick={handleClearSearch}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-400 hover:text-neutral-600"
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300"
             >
               ×
             </Button>

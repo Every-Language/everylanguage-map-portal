@@ -449,6 +449,7 @@ export function useTextProgressByVersion(projectId: string | null, bibleVersionI
                 `)
                 .in('verse_id', verseIds)
                 .eq('text_versions.language_entity_id', project.target_language_entity_id)
+                // No limit needed for verse texts per chapter
 
               const versesWithText = new Set(verseTexts?.map(vt => vt.verse_id) || []).size
               const textProgress = chapter.total_verses > 0 ? (versesWithText / chapter.total_verses) * 100 : 0
@@ -722,22 +723,21 @@ export function useBibleProgressStats(projectId: string | null, bibleVersionId: 
     queryFn: async () => {
       if (!projectId || !bibleVersionId) throw new Error('Project ID and Bible Version ID are required')
 
-      // Get all books and chapters for the bible version
-      const { data: booksWithChapters, error: booksError } = await supabase
+      // Get total books count for this bible version
+      const { count: totalBooks, error: booksCountError } = await supabase
         .from('books')
-        .select(`
-          id,
-          name,
-          chapters (
-            id,
-            chapter_number,
-            total_verses
-          )
-        `)
+        .select('*', { count: 'exact', head: true })
         .eq('bible_version_id', bibleVersionId)
-        .order('global_order', { ascending: true })
 
-      if (booksError) throw booksError
+      if (booksCountError) throw booksCountError
+
+      // Get total chapters count for this bible version
+      const { count: totalChapters, error: chaptersCountError } = await supabase
+        .from('chapters')
+        .select('*, books!inner(*)', { count: 'exact', head: true })
+        .eq('books.bible_version_id', bibleVersionId)
+
+      if (chaptersCountError) throw chaptersCountError
 
       // Get audio versions that belong to this project
       const { data: audioVersions } = await supabase
@@ -747,57 +747,53 @@ export function useBibleProgressStats(projectId: string | null, bibleVersionId: 
 
       const audioVersionIds = audioVersions?.map(v => v.id) || [];
 
-      // OPTIMIZED: Get media files directly by chapter_id
-      const { data: mediaFiles, error: mediaFilesError } = await supabase
+      // Count distinct chapters that have media files (much more efficient)
+      const { data: chaptersWithMedia, error: mediaCountError } = await supabase
         .from('media_files')
-        .select(`
-          id,
-          chapter_id,
-          audio_version_id
-        `)
+        .select('chapter_id')
         .in('audio_version_id', audioVersionIds)
         .not('chapter_id', 'is', null)
+        
+      if (mediaCountError) throw mediaCountError
 
-      if (mediaFilesError) throw mediaFilesError
+      // Count unique chapters with media files
+      const uniqueChaptersWithMedia = new Set(chaptersWithMedia?.map(m => m.chapter_id) || []).size
 
-      // Create set of chapters that have media files
-      const chaptersWithFiles = new Set<string>()
-      mediaFiles?.forEach(mediaFile => {
-        if (mediaFile.chapter_id && mediaFile.audio_version_id && audioVersionIds.includes(mediaFile.audio_version_id)) {
-          chaptersWithFiles.add(mediaFile.chapter_id)
-        }
-      })
+      // For books completion, we need to check which books have ALL their chapters complete
+      // This requires a more complex query, but still more efficient than fetching everything
+      const { data: booksWithChapters, error: booksError } = await supabase
+        .from('books')
+        .select(`
+          id,
+          chapters!inner(id)
+        `)
+        .eq('bible_version_id', bibleVersionId)
 
-      // Calculate chapter completion status
-      let completedChapters = 0
+      if (booksError) throw booksError
+
+      // For each book, check if all its chapters have media files
       let completedBooks = 0
-      let totalChapters = 0
-
-      booksWithChapters.forEach(book => {
-        const chapters = book.chapters || []
-        totalChapters += chapters.length
-
-        // OPTIMIZED: Simple check - chapter is complete if it has any media files
-        const chapterStatuses = chapters.map(chapter => {
-          const isComplete = chaptersWithFiles.has(chapter.id)
-          if (isComplete) completedChapters++
-          return isComplete
-        })
-
-        const bookComplete = chapterStatuses.length > 0 && chapterStatuses.every(status => status)
-        if (bookComplete) completedBooks++
+      const chaptersWithMediaSet = new Set(chaptersWithMedia?.map(m => m.chapter_id) || [])
+      
+      booksWithChapters?.forEach(book => {
+        const allChaptersComplete = book.chapters.every(chapter => 
+          chaptersWithMediaSet.has(chapter.id)
+        )
+        if (allChaptersComplete && book.chapters.length > 0) {
+          completedBooks++
+        }
       })
 
       return {
         booksProgress: {
           completed: completedBooks,
-          total: booksWithChapters.length,
-          percentage: booksWithChapters.length > 0 ? (completedBooks / booksWithChapters.length) * 100 : 0
+          total: totalBooks || 0,
+          percentage: (totalBooks || 0) > 0 ? (completedBooks / (totalBooks || 1)) * 100 : 0
         },
         chaptersProgress: {
-          completed: completedChapters,
-          total: totalChapters,
-          percentage: totalChapters > 0 ? (completedChapters / totalChapters) * 100 : 0
+          completed: uniqueChaptersWithMedia,
+          total: totalChapters || 0,
+          percentage: (totalChapters || 0) > 0 ? (uniqueChaptersWithMedia / (totalChapters || 1)) * 100 : 0
         }
       }
     },
@@ -843,6 +839,7 @@ export function useChapterTableData(projectId: string | null, bibleVersionId: st
         .eq('books.bible_version_id', bibleVersionId)
         .order('books.global_order', { ascending: true })
         .order('chapter_number', { ascending: true })
+        // No limit needed for chapters query
 
       if (chaptersError) throw chaptersError
 
@@ -867,6 +864,7 @@ export function useChapterTableData(projectId: string | null, bibleVersionId: st
         .in('audio_version_id', audioVersionIds)
         .not('chapter_id', 'is', null)
         .order('created_at', { ascending: false })
+        // Monitor performance - add limit if this query becomes slow
 
       if (mediaFilesError) throw mediaFilesError
 

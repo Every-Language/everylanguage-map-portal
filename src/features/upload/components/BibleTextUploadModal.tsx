@@ -19,10 +19,11 @@ import { useSelectedProject } from '../../dashboard/hooks/useSelectedProject';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { 
   useTextVersionsByProject, 
-  useBulkInsertVerseTexts,
   useCreateTextVersion
 } from '../../../shared/hooks/query/text-versions';
 import { useBibleVersions } from '../../../shared/hooks/query/bible-versions';
+import { useChunkedBulkInsertVerseTexts } from '@/shared/hooks/query/text-versions';
+import { useUploadStore } from '@/shared/stores/upload';
 
 import { DocumentTextIcon, CheckCircleIcon, ExclamationTriangleIcon, PlusIcon } from '@heroicons/react/24/outline';
 
@@ -92,7 +93,6 @@ export function BibleTextUploadModal({
   const { toast } = useToast();
   const { data: textVersions, refetch: refetchTextVersions } = useTextVersionsByProject(selectedProject?.id || '');
   const { data: bibleVersions } = useBibleVersions();
-  const bulkInsertMutation = useBulkInsertVerseTexts();
   const createTextVersionMutation = useCreateTextVersion();
   
   // States
@@ -105,6 +105,17 @@ export function BibleTextUploadModal({
   const [selectedBibleVersion, setSelectedBibleVersion] = useState<string>('');
   const [newTextVersionName, setNewTextVersionName] = useState('');
   const [isCreatingTextVersion, setIsCreatingTextVersion] = useState(false);
+
+  // Updated mutation to use chunked upload
+  const chunkedBulkInsertMutation = useChunkedBulkInsertVerseTexts();
+  
+  // Upload store for progress tracking
+  const { 
+    startTextUpload, 
+    updateTextProgress, 
+    completeTextUpload,
+    setOnTextUploadComplete 
+  } = useUploadStore();
 
   // Check if we need to show text version creation
   const needsTextVersion = !textVersions || textVersions.length === 0;
@@ -367,7 +378,7 @@ export function BibleTextUploadModal({
     }
   }, [selectedProject, newTextVersionName, selectedBibleVersion, createTextVersionMutation, dbUser, toast, refetchTextVersions]);
 
-  // Handle upload
+  // Updated upload handler with progress tracking
   const handleUpload = useCallback(async () => {
     if (!user || !dbUser || !csvData) return;
     
@@ -382,71 +393,89 @@ export function BibleTextUploadModal({
       return;
     }
 
-    setIsUploading(true);
+    // Check if we have text versions
+    const textVersionId = textVersions?.[0]?.id;
+    
+    if (!textVersionId) {
+      toast({
+        title: 'No text version available',
+        description: 'Please create a text version first before uploading verses',
+        variant: 'error'
+      });
+      return;
+    }
 
     try {
-      // Check if we have text versions, if not, we need to create one first
-      const textVersionId = textVersions?.[0]?.id;
+      // Start progress tracking
+      startTextUpload();
       
-      if (!textVersionId) {
-        // We need a text version to associate with verse texts
-        // For now, let's show an error message
-        toast({
-          title: 'No text version available',
-          description: 'Please create a text version first before uploading verses',
-          variant: 'error'
-        });
-        setIsUploading(false);
-        return;
-      }
+      // Set completion callback for when upload finishes
+      setOnTextUploadComplete(() => {
+        onUploadComplete?.();
+      });
+
+      // Close modal immediately to show progress
+      onOpenChange(false);
+
+      // Show initial toast
+      toast({
+        title: 'Upload Started',
+        description: `Processing ${validRows.length.toLocaleString()} verse texts in batches`,
+        variant: 'info'
+      });
 
       const verseTextsToInsert = validRows.map(row => ({
         verse_id: row.verse_id!,
         text_version_id: textVersionId,
         verse_text: row.text,
-        created_by: dbUser.id  // Use database user ID
+        created_by: dbUser.id
       }));
 
-      console.log('Attempting to insert verse texts:', verseTextsToInsert);
+      console.log('Starting chunked upload for:', verseTextsToInsert.length, 'verses');
 
-      await bulkInsertMutation.mutateAsync(verseTextsToInsert);
-
-      setUploadResults({
-        success: validRows.length,
-        errors: []
+      await chunkedBulkInsertMutation.mutateAsync({
+        verseTextsData: verseTextsToInsert,
+        onProgress: (progress) => {
+          console.log('Upload progress:', progress);
+          updateTextProgress(progress);
+        }
       });
+
+      // Complete upload tracking
+      completeTextUpload();
 
       toast({
         title: 'Upload Complete!',
-        description: `Successfully uploaded ${validRows.length} verse texts`,
+        description: `Successfully uploaded ${validRows.length.toLocaleString()} verse texts`,
         variant: 'success'
       });
-
-      // Call the callback if provided
-      onUploadComplete?.();
 
     } catch (error) {
       console.error('Upload error:', error);
       
-      const errorRows = validRows.map(row => ({
-        ...row,
-        error: error instanceof Error ? error.message : 'Upload failed: Unknown error'
-      }));
-
-      setUploadResults({
-        success: 0,
-        errors: errorRows
-      });
-
+      // Complete upload tracking even on error
+      completeTextUpload();
+      
       toast({
         title: 'Upload Failed',
         description: error instanceof Error ? error.message : 'An unknown error occurred',
         variant: 'error'
       });
-    } finally {
-      setIsUploading(false);
     }
-  }, [user, dbUser, csvData, textVersions, bulkInsertMutation, toast, onUploadComplete]);
+  }, [
+    user, 
+    dbUser, 
+    csvData, 
+    textVersions, 
+    chunkedBulkInsertMutation, 
+    toast, 
+    onUploadComplete,
+    onOpenChange,
+    startTextUpload,
+    updateTextProgress,
+    completeTextUpload,
+    setOnTextUploadComplete
+  ]);
 
   // Download sample CSV
   const downloadSampleCSV = useCallback(() => {

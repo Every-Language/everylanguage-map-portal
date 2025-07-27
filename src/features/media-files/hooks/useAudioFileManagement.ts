@@ -1,13 +1,14 @@
-import { useDataTableState, type DataTableFilters } from '../../../shared/hooks/useDataTableState';
+import { useDataTableState } from '../../../shared/hooks/useDataTableState';
 import { useModalState } from '../../../shared/hooks/useModalState';
 import { useBulkOperations } from '../../../shared/hooks/useBulkOperations';
 import { useFormState } from '../../../shared/hooks/useFormState';
 import {
-  useMediaFilesByProject,
+  useMediaFilesByProjectPaginated,
   useUpdateMediaFile,
   useBatchUpdateMediaFileStatus,
   useBatchUpdateMediaFilePublishStatus,
   useSoftDeleteMediaFiles,
+  useRestoreMediaFiles,
   type MediaFileWithVerseInfo
 } from '../../../shared/hooks/query/media-files';
 import {
@@ -26,7 +27,7 @@ import { useDownload } from '../../../shared/hooks/useDownload';
 import { useAudioPlayerStore } from '../../../shared/stores/audioPlayer';
 import { useSelectedProject } from '../../../features/dashboard/hooks/useSelectedProject';
 import { useVerseMarking } from './useVerseMarking';
-import { useMemo, useCallback, useState } from 'react';
+import { useMemo, useCallback, useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
 // Type definitions for the audio file management
@@ -37,6 +38,7 @@ export interface AudioFileFilters {
   searchText: string;
   bookId: string;
   chapterId: string;
+  showDeleted?: boolean;
 }
 
 export interface AudioFileEditForm extends Record<string, unknown> {
@@ -64,7 +66,8 @@ export function useAudioFileManagement(projectId: string | null) {
       uploadStatus: 'all',
       searchText: '',
       bookId: 'all',
-      chapterId: 'all'
+      chapterId: 'all',
+      showDeleted: false
     },
     initialSort: {
       field: 'created_at',
@@ -120,10 +123,42 @@ export function useAudioFileManagement(projectId: string | null) {
   const { downloadState, downloadFile, clearError } = useDownload();
   const queryClient = useQueryClient();
 
-  // Data fetching
-  const { data: mediaFiles, isLoading: mediaFilesLoading, error, refetch } = useMediaFilesByProject(projectId);
+  // Data fetching using paginated hook for better performance
+  const { 
+    data: paginatedResult, 
+    isLoading: mediaFilesLoading, 
+    refetch 
+  } = useMediaFilesByProjectPaginated(projectId || '', {
+    page: tableState.currentPage,
+    pageSize: tableState.itemsPerPage,
+    audioVersionId: tableState.filters.audioVersionId as string,
+    bookId: tableState.filters.bookId as string,
+    chapterId: tableState.filters.chapterId as string,
+    publishStatus: tableState.filters.publishStatus as string,
+    uploadStatus: tableState.filters.uploadStatus as string,
+    searchText: tableState.filters.searchText as string,
+    sortField: tableState.sortField,
+    sortDirection: tableState.sortDirection,
+    showDeleted: tableState.filters.showDeleted as boolean
+  });
+  
+  // Extract data and count from paginated result
+  const mediaFiles = paginatedResult?.data || [];
+  const totalItems = paginatedResult?.count || 0;
+  const totalPages = Math.ceil(totalItems / tableState.itemsPerPage);
+  
   const { data: audioVersions, isLoading: audioVersionsLoading, refetch: refetchAudioVersions } = useAudioVersionsByProject(projectId || '');
   const { data: bibleVersions } = useBibleVersions();
+
+  // Auto-select first audio version if none selected and "all" is currently selected
+  useEffect(() => {
+    if (audioVersions && audioVersions.length > 0 && tableState.filters.audioVersionId === 'all') {
+      tableState.handleFilterChange('audioVersionId', audioVersions[0].id);
+    }
+  }, [audioVersions, tableState.filters.audioVersionId, tableState]);
+
+  // Error handling - combine errors from all queries
+  const error = null; // For now, we'll handle errors through the individual mutations
   const { data: books, isLoading: booksLoading } = useBooks();
   
   // Fetch chapters for both filter display and edit modal
@@ -143,7 +178,21 @@ export function useAudioFileManagement(projectId: string | null) {
   const batchUpdateStatus = useBatchUpdateMediaFileStatus();
   const batchUpdatePublishStatus = useBatchUpdateMediaFilePublishStatus();
   const softDeleteFiles = useSoftDeleteMediaFiles();
+  const restoreFiles = useRestoreMediaFiles();
   const createAudioVersionMutation = useCreateAudioVersion();
+
+  // Modal state for confirmations
+  const [confirmationModal, setConfirmationModal] = useState<{
+    isOpen: boolean;
+    type: 'delete' | 'restore';
+    items: string[];
+    message: string;
+  }>({
+    isOpen: false,
+    type: 'delete',
+    items: [],
+    message: ''
+  });
 
   // Enhanced form state for edit modal with the updateField method expected by components
   const enhancedEditForm = useMemo(() => ({
@@ -161,92 +210,12 @@ export function useAudioFileManagement(projectId: string | null) {
     }
   }), [audioVersionForm]);
 
-  // Filter and sort media files (global filtering for search)
-  const filteredAndSortedFiles = useMemo(() => {
-    if (!mediaFiles || !projectId) return { all: [], paginated: [], totalCount: 0 };
-    
-    const filtered = mediaFiles.filter((file: MediaFileWithVerseInfo) => {
-      const matchesAudioVersion = tableState.filters.audioVersionId === 'all' || file.audio_version_id === tableState.filters.audioVersionId;
-      const matchesPublishStatus = tableState.filters.publishStatus === 'all' || (file.publish_status || 'pending') === tableState.filters.publishStatus;
-      const matchesUploadStatus = tableState.filters.uploadStatus === 'all' || (file.upload_status || 'pending') === tableState.filters.uploadStatus;
-      const matchesBook = tableState.filters.bookId === 'all' || file.book_id === tableState.filters.bookId;
-      const matchesChapter = tableState.filters.chapterId === 'all' || file.chapter_id === tableState.filters.chapterId;
-      const searchText = tableState.filters.searchText as string;
-      const matchesSearch = !searchText || 
-        file.filename?.toLowerCase().includes(searchText.toLowerCase()) ||
-        file.verse_reference?.toLowerCase().includes(searchText.toLowerCase());
-        
-      return matchesAudioVersion && matchesPublishStatus && matchesUploadStatus && matchesBook && matchesChapter && matchesSearch;
-    });
-
-    // Sort the filtered results
-    const sorted = [...filtered].sort((a, b) => {
-      let comparison = 0;
-      
-      switch (tableState.sortField) {
-        case 'filename': {
-          comparison = (a.filename || '').localeCompare(b.filename || '');
-          break;
-        }
-        case 'publish_status': {
-          const statusA = a.publish_status || 'pending';
-          const statusB = b.publish_status || 'pending';
-          comparison = statusA.localeCompare(statusB);
-          break;
-        }
-        case 'upload_status': {
-          const statusA = a.upload_status || 'pending';
-          const statusB = b.upload_status || 'pending';
-          comparison = statusA.localeCompare(statusB);
-          break;
-        }
-        case 'created_at': {
-          const dateA = new Date(a.created_at || 0).getTime();
-          const dateB = new Date(b.created_at || 0).getTime();
-          comparison = dateA - dateB;
-          break;
-        }
-        case 'verse_reference': {
-          // Sort by global book order first, then chapter number, then start verse number
-          const bookOrderA = a.book_global_order || 999;
-          const bookOrderB = b.book_global_order || 999;
-          
-          if (bookOrderA !== bookOrderB) {
-            comparison = bookOrderA - bookOrderB;
-          } else {
-            // Same book, sort by chapter number
-            const chapterA = a.chapter_number || 0;
-            const chapterB = b.chapter_number || 0;
-            
-            if (chapterA !== chapterB) {
-              comparison = chapterA - chapterB;
-            } else {
-              // Same chapter, sort by start verse number
-              const verseA = a.start_verse_number || 0;
-              const verseB = b.start_verse_number || 0;
-              comparison = verseA - verseB;
-            }
-          }
-          break;
-        }
-        default:
-          comparison = 0;
-      }
-      
-      return tableState.sortDirection === 'desc' ? -comparison : comparison;
-    });
-
-    // Apply pagination to the sorted results
-    const startIndex = (tableState.currentPage - 1) * tableState.itemsPerPage;
-    const endIndex = startIndex + tableState.itemsPerPage;
-    const paginated = sorted.slice(startIndex, endIndex);
-
-    return {
-      all: sorted,
-      paginated: paginated,
-      totalCount: sorted.length
-    };
-  }, [mediaFiles, projectId, tableState.filters, tableState.sortField, tableState.sortDirection, tableState.currentPage, tableState.itemsPerPage]);
+  // Data is already filtered, sorted, and paginated on the server side
+  const filteredAndSortedFiles = {
+    all: mediaFiles, // For bulk operations that need to reference all items
+    paginated: mediaFiles, // Current page data
+    totalCount: totalItems // Total count from server
+  };
 
   // Bulk operations setup
   const bulkOps = useBulkOperations(filteredAndSortedFiles.paginated, {
@@ -280,6 +249,20 @@ export function useAudioFileManagement(projectId: string | null) {
             fileIds: selectedIds,
             status: 'archived'
           });
+        }
+      },
+      {
+        id: 'soft_delete',
+        label: 'Soft Delete',
+        handler: async (selectedIds: string[]) => {
+          await softDeleteFiles.mutateAsync({ fileIds: selectedIds });
+        }
+      },
+      {
+        id: 'restore',
+        label: 'Restore',
+        handler: async (selectedIds: string[]) => {
+          await restoreFiles.mutateAsync({ fileIds: selectedIds });
         }
       }
     ]
@@ -456,10 +439,62 @@ export function useAudioFileManagement(projectId: string | null) {
     bulkOps.selectItem(id, checked);
   }, [bulkOps]);
 
-  // Execute bulk operation handler
-  const executeBulkOperation = useCallback(async (operationId: string) => {
-    await bulkOps.performBulkOperation(operationId);
-  }, [bulkOps]);
+  // Bulk operations handler
+  const executeBulkOperation = useCallback(async (action: string) => {
+    const selectedIds = Array.from(bulkOps.selectedItems);
+    if (selectedIds.length === 0) {
+      toast({
+        title: 'No items selected',
+        description: 'Please select items to perform bulk operations',
+        variant: 'warning'
+      });
+      return;
+    }
+
+    try {
+      switch (action) {
+        case 'pending':
+        case 'published':
+        case 'archived':
+          await batchUpdatePublishStatus.mutateAsync({
+            fileIds: selectedIds,
+            status: action as 'pending' | 'published' | 'archived'
+          });
+          toast({
+            title: 'Status updated',
+            description: `${selectedIds.length} files updated to ${action}`,
+            variant: 'success'
+          });
+          bulkOps.clearSelection();
+          break;
+        case 'soft_delete':
+          setConfirmationModal({
+            isOpen: true,
+            type: 'delete',
+            items: selectedIds,
+            message: `Are you sure you want to delete ${selectedIds.length} selected file${selectedIds.length !== 1 ? 's' : ''}? This action can be undone by restoring the files later.`
+          });
+          break;
+        case 'restore':
+          setConfirmationModal({
+            isOpen: true,
+            type: 'restore',
+            items: selectedIds,
+            message: `Are you sure you want to restore ${selectedIds.length} selected file${selectedIds.length !== 1 ? 's' : ''}?`
+          });
+          break;
+        default:
+          console.warn('Unknown bulk operation:', action);
+      }
+    } catch (error) {
+      console.error('Error in bulk operation:', error);
+      toast({
+        title: 'Operation failed',
+        description: `Failed to ${action} selected files`,
+        variant: 'error'
+      });
+    }
+  }, [bulkOps, batchUpdatePublishStatus, toast, setConfirmationModal]);
 
   // Bulk operations
   const handleBulkPublishStatusChange = useCallback(async (status: PublishStatus) => {
@@ -510,27 +545,70 @@ export function useAudioFileManagement(projectId: string | null) {
     }
   }, [enhancedEditForm]);
 
-  // Helper function to safely extract filters as AudioFileFilters type
-  const extractAudioFileFilters = (filters: DataTableFilters): AudioFileFilters => {
-    return {
-      audioVersionId: (filters.audioVersionId as string) || 'all',
-      publishStatus: (filters.publishStatus as string) || 'all',
-      uploadStatus: (filters.uploadStatus as string) || 'all',
-      searchText: (filters.searchText as string) || '',
-      bookId: (filters.bookId as string) || 'all',
-      chapterId: (filters.chapterId as string) || 'all'
-    };
-  };
-
   // Computed properties for selection state
   const allCurrentPageSelected = filteredAndSortedFiles.paginated.length > 0 && 
     filteredAndSortedFiles.paginated.every(file => bulkOps.selectedItems.has(file.id));
   const someCurrentPageSelected = filteredAndSortedFiles.paginated.some(file => bulkOps.selectedItems.has(file.id));
   const selectedItems = Array.from(bulkOps.selectedItems);
 
+  // Delete handler for individual files - now with confirmation
+  const handleDelete = useCallback(async (file: MediaFileWithVerseInfo) => {
+    setConfirmationModal({
+      isOpen: true,
+      type: 'delete',
+      items: [file.id],
+      message: `Are you sure you want to delete "${file.filename}"? This action can be undone by restoring the file later.`
+    });
+  }, []);
+
+  // Confirmation modal handlers
+  const handleConfirmAction = useCallback(async () => {
+    try {
+      const { type, items } = confirmationModal;
+      
+      if (type === 'delete') {
+        await softDeleteFiles.mutateAsync({
+          fileIds: items
+        });
+        toast({
+          title: 'Files deleted',
+          description: `${items.length} file${items.length !== 1 ? 's' : ''} deleted successfully`,
+          variant: 'success'
+        });
+      } else if (type === 'restore') {
+        await restoreFiles.mutateAsync({
+          fileIds: items
+        });
+        toast({
+          title: 'Files restored',
+          description: `${items.length} file${items.length !== 1 ? 's' : ''} restored successfully`,
+          variant: 'success'
+        });
+      }
+      
+      // Clear selection after successful operation
+      bulkOps.clearSelection();
+      setConfirmationModal({ isOpen: false, type: 'delete', items: [], message: '' });
+    } catch (error) {
+      console.error('Error in confirmation action:', error);
+      toast({
+        title: 'Operation failed',
+        description: `Failed to ${confirmationModal.type} selected files`,
+        variant: 'error'
+      });
+    }
+  }, [confirmationModal, softDeleteFiles, restoreFiles, toast, bulkOps]);
+
+  const handleCancelConfirmation = useCallback(() => {
+    setConfirmationModal({ isOpen: false, type: 'delete', items: [], message: '' });
+  }, []);
+
   return {
     // State - safely extract filters as expected type for components
-    filters: extractAudioFileFilters(tableState.filters),
+    filters: {
+      ...tableState.filters,
+      showDeleted: tableState.filters.showDeleted || false
+    } as AudioFileFilters & { showDeleted: boolean },
     sortField: tableState.sortField as SortField | null,
     sortDirection: tableState.sortDirection,
     ...modalState,
@@ -549,7 +627,7 @@ export function useAudioFileManagement(projectId: string | null) {
     currentPage: tableState.currentPage,
     itemsPerPage: tableState.itemsPerPage,
     totalItems: filteredAndSortedFiles.totalCount,
-    totalPages: Math.ceil(filteredAndSortedFiles.totalCount / tableState.itemsPerPage),
+    totalPages,
     
     // Loading states
     isLoading: mediaFilesLoading || audioVersionsLoading || booksLoading || chaptersLoading,
@@ -600,6 +678,13 @@ export function useAudioFileManagement(projectId: string | null) {
     batchUpdateStatus,
     batchUpdatePublishStatus,
     softDeleteFiles,
-    createAudioVersionMutation
+    restoreFiles,
+    createAudioVersionMutation,
+    handleDelete,
+    handleConfirmAction,
+    handleCancelConfirmation,
+    
+    // Confirmation modal
+    confirmationModal
   };
 } 

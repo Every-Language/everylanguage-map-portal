@@ -5,13 +5,13 @@ import { Progress } from '../../../../shared/design-system';
 
 interface ProgressStats {
   audioProgress: {
-    versesWithAudio: number;
-    totalVerses: number;
+    chaptersWithAudio: number;
+    totalChapters: number;
     percentage: number;
   };
   textProgress: {
-    versesWithText: number;
-    totalVerses: number;
+    chaptersWithText: number;
+    totalChapters: number;
     percentage: number;
   };
 }
@@ -31,7 +31,7 @@ export const ProgressWidgets: React.FC<ProgressWidgetsProps> = ({
       <MetricCard
         title="Audio Bible Progress"
         value={`${Math.round(progressStats?.audioProgress.percentage || 0)}%`}
-        subtitle={`${progressStats?.audioProgress.versesWithAudio || 0} of ${progressStats?.audioProgress.totalVerses || 0} chapters`}
+        subtitle={`${progressStats?.audioProgress.chaptersWithAudio || 0} of ${progressStats?.audioProgress.totalChapters || 0} chapters`}
         color="secondary"
         isLoading={isLoading}
         icon={
@@ -54,7 +54,7 @@ export const ProgressWidgets: React.FC<ProgressWidgetsProps> = ({
       <MetricCard
         title="Written Bible Progress"
         value={`${Math.round(progressStats?.textProgress.percentage || 0)}%`}
-        subtitle={`${progressStats?.textProgress.versesWithText || 0} of ${progressStats?.textProgress.totalVerses || 0} chapters`}
+        subtitle={`${progressStats?.textProgress.chaptersWithText || 0} of ${progressStats?.textProgress.totalChapters || 0} chapters`}
         color="secondary"
         isLoading={isLoading}
         icon={

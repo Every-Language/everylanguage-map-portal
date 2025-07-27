@@ -157,14 +157,14 @@ function ProjectCreationForm() {
             <Button
               variant="outline"
               onClick={() => navigate('/dashboard')}
-              className="text-gray-600 hover:text-gray-900"
+              className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
             >
               Cancel
             </Button>
             <Button
               variant="ghost"
               onClick={resetForm}
-              className="text-gray-600 hover:text-gray-900"
+              className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
               disabled={state.isSubmitting}
             >
               Reset

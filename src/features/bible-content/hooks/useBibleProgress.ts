@@ -245,7 +245,7 @@ export function useBibleProgress() {
     }
   };
 
-  // OPTIMIZED: Calculate progress statistics using chapter-level tracking
+  // OPTIMIZED: Calculate progress statistics using efficient counting
   const { data: progressStats, isLoading: statsLoading } = useQuery<ProgressStats>({
     queryKey: ['bible-progress-stats', selectedProject?.id, selectedBibleVersion, selectedVersionType, currentVersionId],
     queryFn: async () => {
@@ -257,79 +257,82 @@ export function useBibleProgress() {
       }
 
       try {
-        // Get all chapters for this bible version
-        const { data: allChapters, error: chaptersError } = await supabase
+        // Get total chapters count for this bible version
+        const { count: totalChapters, error: chaptersCountError } = await supabase
           .from('chapters')
-          .select(`
-            id,
-            books!inner(bible_version_id)
-          `)
+          .select('*, books!inner(*)', { count: 'exact', head: true })
           .eq('books.bible_version_id', selectedBibleVersion);
 
-        if (chaptersError) throw chaptersError;
+        if (chaptersCountError) throw chaptersCountError;
 
-        if (!allChapters || allChapters.length === 0) {
+        if (!totalChapters || totalChapters === 0) {
           return {
             booksProgress: { completed: 0, total: 0, percentage: 0 },
             chaptersProgress: { completed: 0, total: 0, percentage: 0 }
           };
         }
 
-        const allChapterIds = allChapters.map(c => c.id);
         let completedChapters = 0;
-        const totalChapters = allChapterIds.length;
+        let chaptersWithContentSet = new Set<string>();
 
         if (selectedVersionType === 'audio') {
-          // OPTIMIZED: Simple chapter-level tracking for audio
-          const { data: mediaFiles } = await supabase
+          // Count distinct chapters that have media files
+          const { data: chaptersWithMedia } = await supabase
             .from('media_files')
             .select('chapter_id')
             .eq('audio_version_id', currentVersionId)
             .eq('upload_status', 'completed')
-            .in('chapter_id', allChapterIds)
             .not('chapter_id', 'is', null);
 
           // Count unique chapters with media files
-          const chaptersWithFiles = new Set<string>();
-          mediaFiles?.forEach(file => {
-            if (file.chapter_id) {
-              chaptersWithFiles.add(file.chapter_id);
-            }
-          });
-
-          completedChapters = chaptersWithFiles.size;
+          const validChapterIds = chaptersWithMedia
+            ?.map(file => file.chapter_id)
+            .filter((id): id is string => id !== null) || [];
+          chaptersWithContentSet = new Set(validChapterIds);
+          completedChapters = chaptersWithContentSet.size;
         } else {
-          // OPTIMIZED: Simple chapter-level tracking for text
-          const { data: verseTexts } = await supabase
+          // Count distinct chapters that have text
+          const { data: chaptersWithText } = await supabase
             .from('verse_texts')
             .select(`
               verse:verses!verse_id(chapter_id)
             `)
             .eq('text_version_id', currentVersionId)
-            .in('verse.chapter_id', allChapterIds)
             .not('verse_text', 'is', null);
 
           // Count unique chapters with texts
-          const chaptersWithTexts = new Set<string>();
-          verseTexts?.forEach(text => {
-            const chapterId = text.verse?.chapter_id;
-            if (chapterId) {
-              chaptersWithTexts.add(chapterId);
-            }
-          });
-
-          completedChapters = chaptersWithTexts.size;
+          chaptersWithContentSet = new Set(
+            chaptersWithText?.map(text => text.verse?.chapter_id).filter(Boolean) || []
+          );
+          completedChapters = chaptersWithContentSet.size;
         }
 
-        // SIMPLIFIED: For books, consider a book complete if all its chapters are complete
-        // We'll get this from the detailed book data query below
-        const completedBooks = 0; // Will be calculated in bookData query
+        // Calculate books progress by checking which books have ALL their chapters complete
+        const { data: booksWithChapters } = await supabase
+          .from('books')
+          .select(`
+            id,
+            chapters!inner(id)
+          `)
+          .eq('bible_version_id', selectedBibleVersion);
+
+        let completedBooks = 0;
+        const totalBooks = booksWithChapters?.length || 0;
+
+        booksWithChapters?.forEach(book => {
+          const allChaptersComplete = book.chapters.every(chapter => 
+            chaptersWithContentSet.has(chapter.id)
+          );
+          if (allChaptersComplete && book.chapters.length > 0) {
+            completedBooks++;
+          }
+        });
 
         return {
           booksProgress: {
             completed: completedBooks,
-            total: 0, // Will be set from bookData
-            percentage: 0 // Will be calculated from bookData
+            total: totalBooks,
+            percentage: totalBooks > 0 ? (completedBooks / totalBooks) * 100 : 0
           },
           chaptersProgress: {
             completed: completedChapters,
@@ -337,7 +340,6 @@ export function useBibleProgress() {
             percentage: totalChapters > 0 ? (completedChapters / totalChapters) * 100 : 0
           }
         };
-
       } catch (error) {
         console.error('Error calculating progress stats:', error);
         throw error;
@@ -370,7 +372,8 @@ export function useBibleProgress() {
             )
           `)
           .eq('bible_version_id', selectedBibleVersion)
-          .order('book_number');
+          .order('book_number')
+          // No limit needed - there are only 66 books in the Bible
 
         if (booksError) throw booksError;
         if (!booksWithChapters) return [];
@@ -382,7 +385,7 @@ export function useBibleProgress() {
         const chaptersWithContent: Set<string> = new Set();
 
         if (selectedVersionType === 'audio') {
-          // OPTIMIZED: Simple chapter-level tracking for audio
+          // Count chapters that have media files
           const { data: mediaFiles } = await supabase
             .from('media_files')
             .select('chapter_id')
@@ -390,6 +393,7 @@ export function useBibleProgress() {
             .eq('upload_status', 'completed')
             .in('chapter_id', allChapterIds)
             .not('chapter_id', 'is', null);
+            // No artificial limit - let the database handle optimization
 
           mediaFiles?.forEach(file => {
             if (file.chapter_id) {
@@ -397,7 +401,7 @@ export function useBibleProgress() {
             }
           });
         } else {
-          // OPTIMIZED: Simple chapter-level tracking for text
+          // Count chapters that have text
           const { data: verseTexts } = await supabase
             .from('verse_texts')
             .select(`
@@ -406,6 +410,7 @@ export function useBibleProgress() {
             .eq('text_version_id', currentVersionId)
             .in('verse.chapter_id', allChapterIds)
             .not('verse_text', 'is', null);
+            // No artificial limit - let the database handle optimization
 
           verseTexts?.forEach(text => {
             const chapterId = text.verse?.chapter_id;
@@ -491,14 +496,11 @@ export function useBibleProgress() {
 
   return {
     // State
-    selectedBibleVersion,
-    setSelectedBibleVersion,
     selectedVersionType,
     setSelectedVersionType,
     currentVersionId,
     
     // Data
-    bibleVersions: bibleVersions || [],
     audioVersions: audioVersions || [],
     textVersions: textVersions || [],
     progressStats,

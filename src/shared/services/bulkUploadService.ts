@@ -87,6 +87,10 @@ export class BulkUploadManager {
   private allProgressState: Map<string, BulkUploadProgress> = new Map();
   private mediaFileIds: string[] = [];
   private progressInterval?: NodeJS.Timeout;
+  private maxTrackingTime = 10 * 60 * 1000; // 10 minutes max
+  private trackingStartTime?: number;
+  private consecutiveErrors = 0;
+  private maxConsecutiveErrors = 5;
 
   constructor(onProgress?: (progress: BulkUploadProgress[]) => void) {
     this.progressCallback = onProgress;
@@ -226,13 +230,32 @@ export class BulkUploadManager {
     }
 
     console.log('🔔 Starting progress tracking for IDs:', this.mediaFileIds);
+    
+    // Record tracking start time
+    this.trackingStartTime = Date.now();
+    this.consecutiveErrors = 0;
 
     // Poll the new progress endpoint every 2 seconds
     this.progressInterval = setInterval(async () => {
       try {
+        // Check if we've exceeded maximum tracking time
+        if (this.trackingStartTime && Date.now() - this.trackingStartTime > this.maxTrackingTime) {
+          console.warn('⏰ Maximum tracking time exceeded, stopping progress tracking');
+          this.stopProgressTracking();
+          return;
+        }
+
         await this.checkUploadProgress(authToken);
       } catch (error) {
         console.error('❌ Progress check error:', error);
+        this.consecutiveErrors++;
+        
+        // Stop tracking if we have too many consecutive errors
+        if (this.consecutiveErrors >= this.maxConsecutiveErrors) {
+          console.warn(`❌ Too many consecutive errors (${this.consecutiveErrors}), stopping progress tracking`);
+          this.stopProgressTracking();
+          return;
+        }
       }
     }, 2000);
 
@@ -247,10 +270,10 @@ export class BulkUploadManager {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     if (!supabaseUrl) {
       console.error('Supabase URL not configured for progress tracking');
-        return;
-      }
+      return;
+    }
 
-      try {
+    try {
       const response = await fetch(`${supabaseUrl}/functions/v1/get-upload-progress`, {
         method: 'POST',
         headers: {
@@ -269,12 +292,16 @@ export class BulkUploadManager {
       const progressResponse: UploadProgressResponse = await response.json();
 
       if (progressResponse.success && progressResponse.data) {
+        // Reset error count on successful response
+        this.consecutiveErrors = 0;
         this.handleProgressResponse(progressResponse.data);
       } else {
         console.error('Progress check failed:', progressResponse.error);
+        throw new Error('Progress response indicated failure');
       }
     } catch (error) {
       console.error('❌ Failed to check upload progress:', error);
+      throw error; // Re-throw to be handled by the interval error handler
     }
   }
 
@@ -314,9 +341,16 @@ export class BulkUploadManager {
       this.notifyProgress();
     }
 
-    // Stop tracking if all uploads are complete
-    if (data.progress.status === 'completed' || data.progress.status === 'failed') {
-      console.log('🎉 All uploads completed, stopping progress tracking');
+    // Stop tracking if all uploads are complete (check both backend status AND individual files)
+    const allFilesComplete = this.allProgressState.size > 0 && 
+      Array.from(this.allProgressState.values()).every(
+        p => p.status === 'completed' || p.status === 'failed'
+      );
+    
+    const backendReportsComplete = data.progress.status === 'completed' || data.progress.status === 'failed';
+    
+    if (allFilesComplete || backendReportsComplete) {
+      console.log('🎉 All uploads completed (individual files complete:', allFilesComplete, ', backend reports:', backendReportsComplete, '), stopping progress tracking');
       this.stopProgressTracking();
     }
   }
@@ -325,6 +359,8 @@ export class BulkUploadManager {
    * Stop progress tracking
    */
   private stopProgressTracking() {
+    console.log('🛑 Stopping progress tracking');
+    
     if (this.progressInterval) {
       clearInterval(this.progressInterval);
       this.progressInterval = undefined;
@@ -334,6 +370,10 @@ export class BulkUploadManager {
       this.subscription.unsubscribe();
       this.subscription = undefined;
     }
+    
+    // Reset tracking state
+    this.trackingStartTime = undefined;
+    this.consecutiveErrors = 0;
   }
 
   /**
@@ -457,15 +497,14 @@ export class BulkUploadManager {
    * Clean up subscriptions and resources
    */
   cleanup() {
-    if (this.progressInterval) {
-      clearInterval(this.progressInterval);
-      this.progressInterval = undefined;
-    }
-    if (this.subscription) {
-      console.log('🧹 Cleaning up bulk upload subscription');
-      this.subscription.unsubscribe();
-      this.subscription = undefined;
-    }
+    console.log('🧹 Cleaning up bulk upload manager');
+    
+    this.stopProgressTracking();
+    
+    // Clear all state
+    this.allProgressState.clear();
+    this.mediaFileIds = [];
+    this.progressCallback = undefined;
   }
 }
 

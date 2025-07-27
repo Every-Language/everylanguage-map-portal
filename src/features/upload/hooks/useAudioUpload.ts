@@ -1,12 +1,11 @@
-import { useState, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { useToast } from '../../../shared/design-system/hooks/useToast';
-import { useSelectedProject } from '../../dashboard/hooks/useSelectedProject';
-import { type ProcessedAudioFile } from '../../../shared/services/audioFileProcessor';
-import { createBulkUploadFiles, type BulkUploadResponse } from '../../../shared/services/bulkUploadService';
-import { useUploadStore } from '../../../shared/stores/upload';
-import { useOptimisticMediaFileUpdates } from '../../../shared/hooks/query/media-files';
-import { supabase } from '../../../shared/services/supabase';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useToast } from '@/shared/design-system/hooks/useToast';
+import { useUploadStore } from '@/shared/stores/upload';
+import { createBulkUploadFiles } from '@/shared/services/bulkUploadService';
+import { supabase } from '@/shared/services/supabase';
+import { useSelectedProject } from '@/features/dashboard/hooks/useSelectedProject';
+import { useOptimisticMediaFileUpdates } from '@/shared/hooks/query/media-files';
+import type { ProcessedAudioFile } from '@/shared/services/audioFileProcessor';
 
 export function useAudioUpload() {
   const [audioFiles, setAudioFiles] = useState<ProcessedAudioFile[]>([]);
@@ -15,62 +14,68 @@ export function useAudioUpload() {
   
   const { toast } = useToast();
   const { selectedProject } = useSelectedProject();
-  const queryClient = useQueryClient();
   const { addOptimisticUploads, removeOptimisticUploads } = useOptimisticMediaFileUpdates();
+  const completionHandledRef = useRef(false);
   
   // Use the global upload store
   const { 
     startBulkUpload, 
     isUploading, 
     uploadProgress,
-    setShowProgress
+    setShowProgress,
+    setOnUploadComplete
   } = useUploadStore();
 
-  // Handle upload completion with proper cache invalidation
-  const handleUploadComplete = useCallback((response: BulkUploadResponse) => {
-    if (response.success && response.data) {
-      const completedFiles = response.data.mediaRecords.filter(r => r.status === 'completed').length;
-      const failedFiles = response.data.mediaRecords.filter(r => r.status === 'failed').length;
+  // Register completion callback when component mounts
+  useEffect(() => {
+    const handleUploadComplete = () => {
+      // Prevent multiple calls
+      if (completionHandledRef.current) {
+        console.log('🚫 Upload completion already handled, skipping');
+        return;
+      }
       
-      if (failedFiles > 0) {
-        toast({
-          title: 'Upload completed with errors',
-          description: `${completedFiles} files uploaded successfully, ${failedFiles} failed.`,
-          variant: 'warning'
-        });
-      } else {
-        toast({
-          title: 'Upload completed',
-          description: `Successfully uploaded all ${completedFiles} files.`,
-          variant: 'success'
-        });
-      }
-
-      // Remove optimistic uploads since real data should be coming in
+      completionHandledRef.current = true;
+      console.log('🔄 Audio upload completed - triggering table refresh');
+      
       if (selectedProject?.id) {
+        console.log('📋 Removing optimistic uploads and refreshing data');
+        // Remove optimistic uploads since real data should now be available
         removeOptimisticUploads(selectedProject.id);
-      }
-
-      // Comprehensive cache invalidation to refresh the table
-      if (selectedProject?.id) {
-        // Invalidate all media file related queries
-        queryClient.invalidateQueries({
-          queryKey: ['media_files_with_verse_info', selectedProject.id]
-        });
-        queryClient.invalidateQueries({
-          queryKey: ['media_files', selectedProject.id]
-        });
-        queryClient.invalidateQueries({
-          queryKey: ['media_files']
-        });
         
-        // Also refetch the queries to trigger immediate update
-        queryClient.refetchQueries({
-          queryKey: ['media_files_with_verse_info', selectedProject.id]
-        });
+        // Show completion toast
+        const completedCount = uploadProgress.filter(p => p.status === 'completed').length;
+        const failedCount = uploadProgress.filter(p => p.status === 'failed').length;
+        
+        if (failedCount > 0) {
+          toast({
+            title: 'Upload completed with errors',
+            description: `${completedCount} files uploaded successfully, ${failedCount} failed.`,
+            variant: 'warning'
+          });
+        } else {
+          toast({
+            title: 'Upload completed',
+            description: `Successfully uploaded all ${completedCount} files.`,
+            variant: 'success'
+          });
+        }
       }
-    }
-  }, [toast, queryClient, selectedProject?.id, removeOptimisticUploads]);
+      
+      // Reset the flag after a delay
+      setTimeout(() => {
+        completionHandledRef.current = false;
+      }, 5000);
+    };
+
+    setOnUploadComplete(handleUploadComplete);
+    
+    // Cleanup on unmount
+    return () => {
+      setOnUploadComplete(undefined);
+      completionHandledRef.current = false;
+    };
+  }, [selectedProject?.id, removeOptimisticUploads, uploadProgress, toast, setOnUploadComplete]);
 
   // Handle upload with global store integration
   const handleUpload = useCallback(async () => {
@@ -81,11 +86,11 @@ export function useAudioUpload() {
       f.selectedStartVerseId && 
       f.selectedEndVerseId
     );
-    
+
     if (validFiles.length === 0) {
       toast({
         title: 'No valid files to upload',
-        description: 'Please ensure all files have book, chapter, and verse selections.',
+        description: 'Please ensure all files have book, chapter, and verse selections',
         variant: 'warning'
       });
       return;
@@ -94,22 +99,21 @@ export function useAudioUpload() {
     if (!selectedAudioVersionId) {
       toast({
         title: 'Audio version required',
-        description: 'Please select an audio version for the upload.',
-        variant: 'warning'
+        description: 'Please select an audio version before uploading',
+        variant: 'error'
       });
       return;
     }
 
     if (!selectedProject?.target_language_entity_id) {
-      console.error('❌ Project target language entity ID is missing');
       toast({
-        title: 'Project not configured',
-        description: 'Project target language is not configured.',
+        title: 'Project not selected',
+        description: 'Please select a valid project before uploading',
         variant: 'error'
       });
       return;
     }
-    
+
     try {
       // Get auth token
       const { data: { session } } = await supabase.auth.getSession();
@@ -117,15 +121,12 @@ export function useAudioUpload() {
         throw new Error('No authentication session found');
       }
 
-      // Create bulk upload files
-      const bulkUploadFiles = createBulkUploadFiles(
-        validFiles,
-        selectedProject.target_language_entity_id,
-        selectedAudioVersionId
-      );
+      // Show progress UI immediately
+      setShowProgress(true);
 
-      // Add optimistic uploads to show immediate feedback
+      // Add optimistic uploads to show files in table immediately
       if (selectedProject?.id) {
+        console.log('📝 Adding optimistic uploads for immediate UI feedback');
         const optimisticUploads = validFiles.map(file => ({
           fileName: file.file.name,
           bookName: file.filenameParseResult.detectedBook || 'Unknown',
@@ -133,60 +134,26 @@ export function useAudioUpload() {
           startVerseNumber: file.filenameParseResult.detectedStartVerse || 0,
           endVerseNumber: file.filenameParseResult.detectedEndVerse || file.filenameParseResult.detectedStartVerse || 0,
         }));
-        
-        console.log('🔄 Adding optimistic uploads to table:', optimisticUploads);
         addOptimisticUploads(selectedProject.id, optimisticUploads);
       }
 
-      toast({
-        title: 'Upload started',
-        description: `Starting upload of ${validFiles.length} files. Progress will be tracked above.`,
-        variant: 'success'
-      });
+      // Create bulk upload files
+      const bulkFiles = createBulkUploadFiles(
+        validFiles,
+        selectedProject.target_language_entity_id,
+        selectedAudioVersionId
+      );
 
-      // Make sure progress display is visible immediately
-      setShowProgress(true);
+      console.log('🚀 Starting bulk upload with files:', bulkFiles);
+      
+      // Start the upload through the store (which handles progress tracking)
+      const result = await startBulkUpload(bulkFiles, session.access_token);
+      
+      console.log('📋 Bulk upload initiated:', result);
 
-      // Start bulk upload using the global store
-      const result = await startBulkUpload(bulkUploadFiles, session.access_token);
-      
-      // Schedule multiple refresh attempts to catch the database changes
-      // Immediate refresh (might be too early)
-      console.log('🔄 Triggering immediate table refresh after upload start');
-      if (selectedProject?.id) {
-        queryClient.invalidateQueries({
-          queryKey: ['media_files_with_verse_info', selectedProject.id]
-        });
-      }
-      
-      // Delayed refresh to catch database inserts
-      setTimeout(() => {
-        console.log('🔄 Triggering delayed table refresh (500ms)');
-        if (selectedProject?.id) {
-          queryClient.invalidateQueries({
-            queryKey: ['media_files_with_verse_info', selectedProject.id]
-          });
-          queryClient.refetchQueries({
-            queryKey: ['media_files_with_verse_info', selectedProject.id]
-          });
-        }
-      }, 500);
-      
-      // Another delayed refresh to ensure we catch any timing issues
-      setTimeout(() => {
-        console.log('🔄 Triggering second delayed table refresh (1500ms)');
-        if (selectedProject?.id) {
-          queryClient.invalidateQueries({
-            queryKey: ['media_files_with_verse_info', selectedProject.id]
-          });
-          queryClient.refetchQueries({
-            queryKey: ['media_files_with_verse_info', selectedProject.id]
-          });
-        }
-      }, 1500);
-      
-      // Handle the completion
-      handleUploadComplete(result);
+      // NOTE: Don't call handleUploadComplete here! 
+      // The upload store will handle progress tracking and completion
+      // handleUploadComplete should only be called when upload is actually done
       
     } catch (error) {
       console.error('Upload error:', error);
@@ -202,7 +169,7 @@ export function useAudioUpload() {
         variant: 'error'
       });
     }
-  }, [audioFiles, selectedAudioVersionId, selectedProject, toast, handleUploadComplete, startBulkUpload, setShowProgress, queryClient, addOptimisticUploads, removeOptimisticUploads]);
+  }, [audioFiles, selectedAudioVersionId, selectedProject, toast, startBulkUpload, setShowProgress, addOptimisticUploads, removeOptimisticUploads]);
 
   // Update file with book/chapter/verse selections
   const updateFileSelection = useCallback((fileId: string, updates: Partial<ProcessedAudioFile>) => {

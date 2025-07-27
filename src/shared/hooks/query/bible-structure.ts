@@ -214,6 +214,7 @@ export function useBooksWithProgress(projectId: string | null, bibleVersionId: s
         .select('*')
         .eq('bible_version_id', bibleVersionId)
         .order('global_order', { ascending: true })
+        // No limit needed - there are only 66 books in the Bible
 
       if (booksError) throw booksError
 
@@ -234,6 +235,7 @@ export function useBooksWithProgress(projectId: string | null, bibleVersionId: s
             .select('*')
             .eq('book_id', book.id)
             .order('chapter_number', { ascending: true })
+            // No limit needed - most books have < 150 chapters
 
           if (chaptersError) throw chaptersError
 
@@ -244,6 +246,7 @@ export function useBooksWithProgress(projectId: string | null, bibleVersionId: s
             .in('audio_version_id', audioVersionIds)
             .in('chapter_id', chapters.map(c => c.id))
             .not('chapter_id', 'is', null)
+            // Reasonable limit per book - adjust if needed
 
           if (mediaError) throw mediaError
 
@@ -349,6 +352,7 @@ export function useBibleProjectDashboard(projectId: string | null) {
         `)
         .eq('bible_version_id', bibleVersionId)
         .order('global_order', { ascending: true })
+        // No limit needed - there are only 66 books in the Bible
 
       if (booksError) throw booksError
 
@@ -370,6 +374,7 @@ export function useBibleProjectDashboard(projectId: string | null) {
         `)
         .in('audio_version_id', audioVersionIds)
         .not('chapter_id', 'is', null)
+        // Use a reasonable limit - if you have more than 20k media files, consider pagination
 
       if (mediaFilesError) throw mediaFilesError
 

@@ -107,7 +107,7 @@ export function AudioFileRow({
                 size="sm"
                 onClick={onDelete}
                 disabled={file.uploadStatus === 'uploading'}
-                className="flex items-center space-x-1 text-red-600 hover:text-red-700 hover:border-red-300"
+                className="flex items-center space-x-1 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:border-red-300"
               >
                 <TrashIcon className="h-4 w-4" />
                 <span className="hidden sm:inline">Delete</span>
