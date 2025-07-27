@@ -41,6 +41,19 @@ export class DownloadService {
         throw new Error('No authentication session found');
       }
 
+      // Extract filenames from full URLs if needed
+      const processedFilePaths = filePaths.map(filePath => {
+        // If it's a full URL, extract just the filename
+        if (filePath.startsWith('https://') || filePath.startsWith('http://')) {
+          const filename = filePath.split('/').pop() || filePath;
+          console.log(`Extracted filename "${filename}" from URL "${filePath}"`);
+          return filename;
+        }
+        return filePath;
+      });
+
+      console.log('Requesting download URLs for files:', processedFilePaths);
+
       // Call the edge function
       const response = await fetch(`${this.supabaseUrl}/functions/v1/get-download-urls`, {
         method: 'POST',
@@ -49,22 +62,29 @@ export class DownloadService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          filePaths,
+          filePaths: processedFilePaths,
           expirationHours,
         }),
       });
 
+      console.log('Edge function response status:', response.status);
+
       if (!response.ok) {
         const errorText = await response.text();
-        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        console.error('Edge function error response:', errorText);
+        
+        let errorMessage = `HTTP ${response.status}`;
         
         try {
           const errorData = JSON.parse(errorText);
-          errorMessage = errorData.error || errorData.details || errorMessage;
+          errorMessage = errorData.error || errorData.details || `HTTP ${response.status}: ${response.statusText}`;
+          console.error('Parsed error data:', errorData);
         } catch {
           // If JSON parsing fails, use the raw text
           if (errorText) {
-            errorMessage = errorText;
+            errorMessage = `HTTP ${response.status}: ${errorText}`;
+          } else {
+            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
           }
         }
         
@@ -72,6 +92,38 @@ export class DownloadService {
       }
 
       const result: DownloadUrlResponse = await response.json();
+      console.log('Successfully got download URLs:', result);
+      
+      // Map the response back to original file paths if we had full URLs
+      if (processedFilePaths.some((path, index) => path !== filePaths[index])) {
+        const mappedUrls: Record<string, string> = {};
+        const mappedErrors: Record<string, string> = {};
+        const mappedFailedFiles: string[] = [];
+        
+        filePaths.forEach((originalPath, index) => {
+          const processedPath = processedFilePaths[index];
+          
+          if (result.urls[processedPath]) {
+            mappedUrls[originalPath] = result.urls[processedPath];
+          }
+          
+          if (result.errors && result.errors[processedPath]) {
+            mappedErrors[originalPath] = result.errors[processedPath];
+          }
+          
+          if (result.failedFiles && result.failedFiles.includes(processedPath)) {
+            mappedFailedFiles.push(originalPath);
+          }
+        });
+        
+        return {
+          ...result,
+          urls: mappedUrls,
+          errors: mappedErrors,
+          failedFiles: mappedFailedFiles
+        };
+      }
+      
       return result;
 
     } catch (error) {

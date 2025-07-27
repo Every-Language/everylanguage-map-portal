@@ -6,14 +6,8 @@ import {
   CardTitle,
   Select,
   SelectItem,
-  SearchableSelect,
-  Input
+  SearchableSelect
 } from '../../../../shared/design-system';
-
-interface TextVersion {
-  id: string;
-  name: string;
-}
 
 interface Book {
   id: string;
@@ -28,14 +22,12 @@ interface Chapter {
 
 interface BibleTextFiltersProps {
   filters: {
-    textVersionId: string;
     bookId: string;
     chapterId: string;
     publishStatus: string;
     searchText: string;
   };
   handleFilterChange: (key: string, value: string) => void;
-  textVersions: TextVersion[];
   books: Book[];
   chapters: Chapter[];
 }
@@ -43,7 +35,6 @@ interface BibleTextFiltersProps {
 export const BibleTextFiltersComponent: React.FC<BibleTextFiltersProps> = ({
   filters,
   handleFilterChange,
-  textVersions,
   books,
   chapters
 }) => {
@@ -53,23 +44,7 @@ export const BibleTextFiltersComponent: React.FC<BibleTextFiltersProps> = ({
         <CardTitle>Filters</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-              Text Version
-            </label>
-            <SearchableSelect 
-              options={[
-                { value: 'all', label: 'All Versions' },
-                ...(textVersions?.map(version => ({ value: version.id, label: version.name })) || [])
-              ]}
-              value={filters.textVersionId} 
-              onValueChange={(value) => handleFilterChange('textVersionId', value)}
-              placeholder="Select Version"
-              searchPlaceholder="Search versions..."
-            />
-          </div>
-          
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
               Book
@@ -117,18 +92,6 @@ export const BibleTextFiltersComponent: React.FC<BibleTextFiltersProps> = ({
               <SelectItem value="published">Published</SelectItem>
               <SelectItem value="archived">Archived</SelectItem>
             </Select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-              Search Text
-            </label>
-            <Input
-              placeholder="Search in verse text..."
-              value={filters.searchText}
-              onChange={(e) => handleFilterChange('searchText', e.target.value)}
-              className="dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
-            />
           </div>
         </div>
       </CardContent>

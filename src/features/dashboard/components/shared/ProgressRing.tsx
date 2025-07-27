@@ -2,7 +2,7 @@ import React from 'react';
 
 interface ProgressRingProps {
   percentage: number;
-  color: 'blue' | 'green' | 'orange' | 'purple' | 'red';
+  color: 'blue' | 'green' | 'orange' | 'purple' | 'red' | 'primary' | 'secondary';
   size?: 'sm' | 'md' | 'lg';
   label?: string;
   className?: string;
@@ -33,6 +33,16 @@ const colorStyles = {
     background: 'text-red-200 dark:text-red-800',
     progress: 'text-red-600 dark:text-red-400',
     label: 'text-red-900 dark:text-red-100'
+  },
+  primary: {
+    background: 'text-primary-200 dark:text-primary-800',
+    progress: 'text-primary-600 dark:text-primary-400',
+    label: 'text-primary-900 dark:text-primary-100'
+  },
+  secondary: {
+    background: 'text-secondary-200 dark:text-secondary-800',
+    progress: 'text-secondary-600 dark:text-secondary-400',
+    label: 'text-secondary-900 dark:text-secondary-100'
   }
 };
 

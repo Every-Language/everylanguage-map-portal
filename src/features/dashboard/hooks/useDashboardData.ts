@@ -49,71 +49,61 @@ export function useDashboardData({ projectId }: DashboardDataProps) {
 
       console.log('Calculating chapter-based progress for project:', projectId, 'version:', selectedBibleVersion);
 
-      // Get books for this bible version
-      const { data: booksInVersion, error: booksError } = await supabase
-        .from('books')
-        .select('id')
-        .eq('bible_version_id', selectedBibleVersion);
+      // Get all chapters for this bible version
+      const { data: allChapters, error: chaptersError } = await supabase
+        .from('chapters')
+        .select(`
+          id,
+          books!inner(
+            id,
+            bible_version_id
+          )
+        `)
+        .eq('books.bible_version_id', selectedBibleVersion);
 
-      if (booksError) {
-        console.error('Error getting books:', booksError);
-        throw booksError;
+      if (chaptersError) {
+        console.error('Error getting chapters:', chaptersError);
+        throw chaptersError;
       }
 
-      if (!booksInVersion || booksInVersion.length === 0) {
+      if (!allChapters || allChapters.length === 0) {
         return {
           audioProgress: { versesWithAudio: 0, totalVerses: 0, percentage: 0 },
           textProgress: { versesWithText: 0, totalVerses: 0, percentage: 0 }
         };
       }
 
-      const bookIds = booksInVersion.map(book => book.id);
+      const allChapterIds = allChapters.map(c => c.id);
+      const totalChapters = allChapterIds.length;
 
-      // Get total chapters for these books
-      const { count: totalChapters, error: chaptersCountError } = await supabase
-        .from('chapters')
-        .select('id', { count: 'exact', head: true })
-        .in('book_id', bookIds);
+      // First get audio versions for this project
+      const { data: audioVersions } = await supabase
+        .from('audio_versions')
+        .select('id')
+        .eq('project_id', projectId);
 
-      if (chaptersCountError) {
-        console.error('Error counting chapters:', chaptersCountError);
-        throw chaptersCountError;
-      }
+      const audioVersionIds = audioVersions?.map(v => v.id) || [];
 
-      // Get chapters that have audio files
+      // OPTIMIZED: Get chapters that have audio files using direct chapter_id
       const { data: audioFiles, error: audioFilesError } = await supabase
         .from('media_files')
-        .select('start_verse_id, end_verse_id')
-        .eq('project_id', projectId)
-        .not('start_verse_id', 'is', null);
+        .select('chapter_id')
+        .in('audio_version_id', audioVersionIds)
+        .in('chapter_id', allChapterIds)
+        .not('chapter_id', 'is', null);
 
       if (audioFilesError) {
         console.error('Error getting audio files:', audioFilesError);
       }
 
-      // Get chapters for audio files through verses
+      // OPTIMIZED: Count unique chapters with audio
       const audioChapterIds = new Set<string>();
       if (audioFiles && audioFiles.length > 0) {
-        const allVerseIds = new Set<string>();
         audioFiles.forEach(file => {
-          if (file.start_verse_id) allVerseIds.add(file.start_verse_id);
-          if (file.end_verse_id) allVerseIds.add(file.end_verse_id);
+          if (file.chapter_id) {
+            audioChapterIds.add(file.chapter_id);
+          }
         });
-
-        if (allVerseIds.size > 0) {
-          const { data: versesWithChapters } = await supabase
-            .from('verses')
-            .select(`
-              chapter_id,
-              chapters!inner(book_id)
-            `)
-            .in('id', Array.from(allVerseIds))
-            .in('chapters.book_id', bookIds);
-
-          versesWithChapters?.forEach(v => {
-            if (v.chapter_id) audioChapterIds.add(v.chapter_id);
-          });
-        }
       }
 
       // Get chapters that have verse texts
@@ -126,37 +116,36 @@ export function useDashboardData({ projectId }: DashboardDataProps) {
       let uniqueTextChapters = new Set<string>();
       
       if (project?.target_language_entity_id) {
-        const { data: chaptersWithText, error: textChaptersError } = await supabase
+        // OPTIMIZED: Get chapters that have text using direct chapter relationship
+        const { data: verseTexts, error: textChaptersError } = await supabase
           .from('verse_texts')
           .select(`
-            verses!inner(
-              chapter_id,
-              chapters!inner(book_id)
-            ),
+            verse:verses!verse_id(chapter_id),
             text_versions!inner(language_entity_id)
           `)
           .eq('text_versions.language_entity_id', project.target_language_entity_id)
-          .in('verses.chapters.book_id', bookIds);
+          .in('verse.chapter_id', allChapterIds);
 
         if (textChaptersError) {
           console.error('Error getting chapters with text:', textChaptersError);
         } else {
           uniqueTextChapters = new Set(
-            chaptersWithText?.map(t => t.verses?.chapter_id).filter(Boolean) || []
+            verseTexts?.map(t => t.verse?.chapter_id).filter(Boolean) || []
           );
         }
       }
 
+      // SIMPLIFIED: Use chapter-level progress instead of verse-level
       const audioProgress = {
         versesWithAudio: audioChapterIds.size,
-        totalVerses: totalChapters || 0,
-        percentage: totalChapters && totalChapters > 0 ? (audioChapterIds.size / totalChapters) * 100 : 0
+        totalVerses: totalChapters,
+        percentage: totalChapters > 0 ? (audioChapterIds.size / totalChapters) * 100 : 0
       };
 
       const textProgress = {
         versesWithText: uniqueTextChapters.size,
-        totalVerses: totalChapters || 0,
-        percentage: totalChapters && totalChapters > 0 ? (uniqueTextChapters.size / totalChapters) * 100 : 0
+        totalVerses: totalChapters,
+        percentage: totalChapters > 0 ? (uniqueTextChapters.size / totalChapters) * 100 : 0
       };
 
       return { audioProgress, textProgress };
@@ -171,28 +160,48 @@ export function useDashboardData({ projectId }: DashboardDataProps) {
     queryFn: async () => {
       if (!projectId) return { mediaFiles: [], textUpdates: [] };
 
-      const { data: mediaFiles, error: mediaError } = await supabase
-        .from('media_files')
-        .select(`
-          id,
-          remote_path,
-          check_status,
-          upload_status,
-          created_at,
-          updated_at,
-          start_verse_id,
-          end_verse_id
-        `)
-        .eq('project_id', projectId)
-        .order('updated_at', { ascending: false })
-        .limit(10);
+      // First get audio versions for this project
+      const { data: audioVersions } = await supabase
+        .from('audio_versions')
+        .select('id')
+        .eq('project_id', projectId);
 
-      if (mediaError) {
-        console.error('Media files error:', mediaError);
+      const audioVersionIds = audioVersions?.map(v => v.id) || [];
+
+      let mediaFiles: Array<{
+        id: string;
+        remote_path: string | null;
+        check_status: string | null;
+        upload_status: string | null;
+        created_at: string | null;
+        updated_at: string | null;
+        chapter_id: string | null;
+      }> = [];
+      if (audioVersionIds.length > 0) {
+        const { data: mediaFilesData, error: mediaError } = await supabase
+          .from('media_files')
+          .select(`
+            id,
+            remote_path,
+            check_status,
+            upload_status,
+            created_at,
+            updated_at,
+            chapter_id
+          `)
+          .in('audio_version_id', audioVersionIds)
+          .order('updated_at', { ascending: false })
+          .limit(10);
+
+        if (mediaError) {
+          console.error('Media files error:', mediaError);
+        } else {
+          mediaFiles = mediaFilesData || [];
+        }
       }
 
       return {
-        mediaFiles: mediaFiles || [],
+        mediaFiles,
         textUpdates: []
       };
     },
@@ -208,10 +217,10 @@ export function useDashboardData({ projectId }: DashboardDataProps) {
       id: string;
       remote_path: string | null;
       check_status: string | null;
-      updated_at: string | null;
+      upload_status: string | null;
       created_at: string | null;
-      start_verse_id: string | null;
-      end_verse_id: string | null;
+      updated_at: string | null;
+      chapter_id: string | null;
     }
 
     const audioFiles = (recentActivity.mediaFiles || []).map((file): ActivityItem => {

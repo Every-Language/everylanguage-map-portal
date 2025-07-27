@@ -5,15 +5,9 @@ import {
   CardHeader,
   CardTitle,
   Select,
-  SelectItem,
-  Input
+  SelectItem
 } from '../../../../shared/design-system';
 import type { AudioFileFilters } from '../../hooks/useAudioFileManagement';
-
-interface AudioVersion {
-  id: string;
-  name: string;
-}
 
 interface Book {
   id: string;
@@ -29,7 +23,6 @@ interface Chapter {
 interface AudioFileFiltersComponentProps {
   filters: AudioFileFilters;
   handleFilterChange: (key: string, value: string) => void;
-  audioVersions: AudioVersion[];
   books: Book[];
   chapters: Chapter[];
 }
@@ -37,7 +30,6 @@ interface AudioFileFiltersComponentProps {
 export const AudioFileFiltersComponent: React.FC<AudioFileFiltersComponentProps> = ({
   filters,
   handleFilterChange,
-  audioVersions,
   books,
   chapters
 }) => {
@@ -47,24 +39,7 @@ export const AudioFileFiltersComponent: React.FC<AudioFileFiltersComponentProps>
         <CardTitle>Filters</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-              Audio Version
-            </label>
-            <Select 
-              value={filters.audioVersionId} 
-              onValueChange={(value) => handleFilterChange('audioVersionId', value)}
-            >
-              <SelectItem value="all">All Versions</SelectItem>
-              {audioVersions?.map((version) => (
-                <SelectItem key={version.id} value={version.id}>
-                  {version.name}
-                </SelectItem>
-              ))}
-            </Select>
-          </div>
-          
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
               Publish Status
@@ -130,18 +105,6 @@ export const AudioFileFiltersComponent: React.FC<AudioFileFiltersComponentProps>
                   </SelectItem>
                 ))}
             </Select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-              Search
-            </label>
-            <Input
-              placeholder="Search by filename or verse reference..."
-              value={filters.searchText}
-              onChange={(e) => handleFilterChange('searchText', e.target.value)}
-              className="dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
-            />
           </div>
         </div>
       </CardContent>

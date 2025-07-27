@@ -145,68 +145,53 @@ export function useChaptersWithStatus(bookId: string | null, projectId: string |
 
       if (chaptersError) throw chaptersError
 
-      // For each chapter, calculate status based on media files
-      const chaptersWithStatus: ChapterWithStatus[] = await Promise.all(
-        chapters.map(async (chapter) => {
-          // Get media files for this chapter and project
-          const { data: mediaFiles, error: mediaError } = await supabase
-            .from('media_files')
-            .select(`
-              id,
-              media_files_verses (
-                verse_id,
-                verses (
-                  id,
-                  verse_number
-                )
-              )
-            `)
-            .eq('project_id', projectId)
-            .in('id', 
-              // Subquery to get media files that have verses in this chapter
-              await supabase
-                .from('media_files_verses')
-                .select('media_file_id')
-                .in('verse_id', 
-                  await supabase
-                    .from('verses')
-                    .select('id')
-                    .eq('chapter_id', chapter.id)
-                    .then(({ data }) => data?.map(v => v.id) || [])
-                )
-                .then(({ data }) => data?.map(mf => mf.media_file_id) || [])
-            )
+      // Get audio versions for this project
+      const { data: audioVersions } = await supabase
+        .from('audio_versions')
+        .select('id')
+        .eq('project_id', projectId);
 
-          if (mediaError) throw mediaError
+      const audioVersionIds = audioVersions?.map(v => v.id) || [];
 
-          // Count unique verses covered by media files
-          const verseIds = new Set<string>()
-          const mediaFileIds: string[] = []
+      // OPTIMIZED: Use direct chapter_id instead of complex junction table queries
+      const { data: mediaFiles, error: mediaError } = await supabase
+        .from('media_files')
+        .select('id, chapter_id')
+        .in('audio_version_id', audioVersionIds)
+        .in('chapter_id', chapters.map(c => c.id))
+        .not('chapter_id', 'is', null)
 
-          mediaFiles?.forEach(mediaFile => {
-            mediaFileIds.push(mediaFile.id)
-            // Handle nested query result
-            const mediaFileVerses = mediaFile.media_files_verses as Array<{ verse_id: string }> | undefined
-            mediaFileVerses?.forEach(mfv => {
-              if (mfv.verse_id) {
-                verseIds.add(mfv.verse_id)
-              }
-            })
-          })
+      if (mediaError) throw mediaError
 
-          const versesCovered = verseIds.size
-          const status = calculateChapterStatus(chapter.total_verses, versesCovered)
-          const progress = calculateProgress(versesCovered, chapter.total_verses)
-
-          return {
-            ...chapter,
-            status,
-            progress,
-            mediaFileIds,
-            versesCovered
+      // Group media files by chapter for efficient lookup
+      const mediaFilesByChapter = new Map<string, string[]>()
+      mediaFiles?.forEach(file => {
+        if (file.chapter_id) {
+          if (!mediaFilesByChapter.has(file.chapter_id)) {
+            mediaFilesByChapter.set(file.chapter_id, [])
           }
-        })
-      )
+          mediaFilesByChapter.get(file.chapter_id)!.push(file.id)
+        }
+      })
+
+      // Calculate status for each chapter - SIMPLIFIED: Chapter-level tracking
+      const chaptersWithStatus: ChapterWithStatus[] = chapters.map(chapter => {
+        const mediaFileIds = mediaFilesByChapter.get(chapter.id) || []
+        const hasMediaFiles = mediaFileIds.length > 0
+        
+        // OPTIMIZED: Chapter-level progress - if chapter has any media files, consider it complete
+        const versesCovered = hasMediaFiles ? chapter.total_verses : 0
+        const status = calculateChapterStatus(chapter.total_verses, versesCovered)
+        const progress = calculateProgress(versesCovered, chapter.total_verses)
+
+        return {
+          ...chapter,
+          status,
+          progress,
+          mediaFileIds,
+          versesCovered
+        }
+      })
 
       return chaptersWithStatus
     },
@@ -223,7 +208,7 @@ export function useBooksWithProgress(projectId: string | null, bibleVersionId: s
     queryFn: async () => {
       if (!projectId || !bibleVersionId) return []
 
-      // Fetch books for the bible version
+      // Get all books for this bible version
       const { data: books, error: booksError } = await supabase
         .from('books')
         .select('*')
@@ -232,7 +217,15 @@ export function useBooksWithProgress(projectId: string | null, bibleVersionId: s
 
       if (booksError) throw booksError
 
-      // For each book, get chapters with status
+      // Get audio versions for this project
+      const { data: audioVersions } = await supabase
+        .from('audio_versions')
+        .select('id')
+        .eq('project_id', projectId);
+
+      const audioVersionIds = audioVersions?.map(v => v.id) || [];
+
+      // Calculate progress for each book
       const booksWithProgress: BibleBookWithProgress[] = await Promise.all(
         books.map(async (book) => {
           // Get chapters for this book
@@ -244,66 +237,59 @@ export function useBooksWithProgress(projectId: string | null, bibleVersionId: s
 
           if (chaptersError) throw chaptersError
 
-          // Calculate status for each chapter
-          const chaptersWithStatus: ChapterWithStatus[] = await Promise.all(
-            chapters.map(async (chapter) => {
-              // Get verses covered by media files for this chapter and project
-              const { data: mediaCoverage, error: mediaError } = await supabase
-                .from('media_files_verses')
-                .select(`
-                  verse_id,
-                  media_file_id,
-                  media_files!inner (
-                    id,
-                    project_id
-                  ),
-                  verses!inner (
-                    id,
-                    chapter_id
-                  )
-                `)
-                .eq('media_files.project_id', projectId)
-                .eq('verses.chapter_id', chapter.id)
+          // OPTIMIZED: Get media files directly by chapter_id - no more junction tables!
+          const { data: mediaFiles, error: mediaError } = await supabase
+            .from('media_files')
+            .select('id, chapter_id')
+            .in('audio_version_id', audioVersionIds)
+            .in('chapter_id', chapters.map(c => c.id))
+            .not('chapter_id', 'is', null)
 
-              if (mediaError) throw mediaError
+          if (mediaError) throw mediaError
 
-              // Count unique verses and media files
-              const verseIds = new Set<string>()
-              const mediaFileIds = new Set<string>()
-
-              mediaCoverage?.forEach(coverage => {
-                verseIds.add(coverage.verse_id)
-                mediaFileIds.add(coverage.media_file_id)
-              })
-
-              const versesCovered = verseIds.size
-              const status = calculateChapterStatus(chapter.total_verses, versesCovered)
-              const progress = calculateProgress(versesCovered, chapter.total_verses)
-
-              return {
-                ...chapter,
-                status,
-                progress,
-                mediaFileIds: Array.from(mediaFileIds),
-                versesCovered
+          // Group media files by chapter
+          const mediaFilesByChapter = new Map<string, string[]>()
+          mediaFiles?.forEach(file => {
+            if (file.chapter_id) {
+              if (!mediaFilesByChapter.has(file.chapter_id)) {
+                mediaFilesByChapter.set(file.chapter_id, [])
               }
-            })
-          )
+              mediaFilesByChapter.get(file.chapter_id)!.push(file.id)
+            }
+          })
 
-          // Calculate book-level progress
+          // Calculate status for each chapter - SIMPLIFIED: Chapter-level tracking
+          const chaptersWithStatus: ChapterWithStatus[] = chapters.map(chapter => {
+            const mediaFileIds = mediaFilesByChapter.get(chapter.id) || []
+            const hasMediaFiles = mediaFileIds.length > 0
+            
+            // OPTIMIZED: Chapter-level progress - if chapter has any media files, consider it complete
+            const versesCovered = hasMediaFiles ? chapter.total_verses : 0
+            const status = calculateChapterStatus(chapter.total_verses, versesCovered)
+            const progress = calculateProgress(versesCovered, chapter.total_verses)
+
+            return {
+              ...chapter,
+              status,
+              progress,
+              mediaFileIds,
+              versesCovered
+            }
+          })
+
+          // Calculate book progress
           const totalChapters = chaptersWithStatus.length
           const completedChapters = chaptersWithStatus.filter(c => c.status === 'complete').length
           const inProgressChapters = chaptersWithStatus.filter(c => c.status === 'in_progress').length
           const notStartedChapters = chaptersWithStatus.filter(c => c.status === 'not_started').length
-          
           const totalVerses = chaptersWithStatus.reduce((sum, c) => sum + c.total_verses, 0)
           const versesCovered = chaptersWithStatus.reduce((sum, c) => sum + c.versesCovered, 0)
-          const progress = calculateProgress(versesCovered, totalVerses)
+          const bookProgress = calculateProgress(versesCovered, totalVerses)
 
           return {
             ...book,
             chapters: chaptersWithStatus,
-            progress,
+            progress: bookProgress,
             totalChapters,
             completedChapters,
             inProgressChapters,
@@ -366,42 +352,51 @@ export function useBibleProjectDashboard(projectId: string | null) {
 
       if (booksError) throw booksError
 
-      // Get all media file coverage for this project in one query
-      const { data: allCoverage, error: coverageError } = await supabase
-        .from('media_files_verses')
+      // Get audio versions for this project
+      const { data: audioVersions } = await supabase
+        .from('audio_versions')
+        .select('id')
+        .eq('project_id', projectId);
+
+      const audioVersionIds = audioVersions?.map(v => v.id) || [];
+
+      // OPTIMIZED: Get media file coverage directly by chapter using chapter_id
+      const { data: mediaFilesByChapter, error: mediaFilesError } = await supabase
+        .from('media_files')
         .select(`
-          verse_id,
-          media_file_id,
-          media_files!inner (project_id),
-          verses!inner (chapter_id)
+          id,
+          chapter_id,
+          audio_version_id
         `)
-        .eq('media_files.project_id', projectId)
+        .in('audio_version_id', audioVersionIds)
+        .not('chapter_id', 'is', null)
 
-      if (coverageError) throw coverageError
+      if (mediaFilesError) throw mediaFilesError
 
-      // Group coverage by chapter_id for efficient lookup
-      const coverageByChapter = new Map<string, Set<string>>()
-      const mediaFilesByChapter = new Map<string, Set<string>>()
+      // Group media files by chapter_id for efficient lookup
+      const mediaFilesByChapterMap = new Map<string, Set<string>>()
       
-      allCoverage?.forEach(coverage => {
-        const chapterId = coverage.verses.chapter_id
+      mediaFilesByChapter?.forEach(mediaFile => {
+        const chapterId = mediaFile.chapter_id
         
-        if (!coverageByChapter.has(chapterId)) {
-          coverageByChapter.set(chapterId, new Set())
-          mediaFilesByChapter.set(chapterId, new Set())
+        if (chapterId && mediaFile.audio_version_id && audioVersionIds.includes(mediaFile.audio_version_id)) {
+          if (!mediaFilesByChapterMap.has(chapterId)) {
+            mediaFilesByChapterMap.set(chapterId, new Set())
+          }
+          mediaFilesByChapterMap.get(chapterId)!.add(mediaFile.id)
         }
-        
-        coverageByChapter.get(chapterId)!.add(coverage.verse_id)
-        mediaFilesByChapter.get(chapterId)!.add(coverage.media_file_id)
       })
 
       // Calculate progress for each book efficiently
       const booksWithProgress: BibleBookWithProgress[] = booksWithChapters.map(book => {
         const chaptersWithStatus: ChapterWithStatus[] = (book.chapters || []).map(chapter => {
-          const verseIds = coverageByChapter.get(chapter.id) || new Set()
-          const mediaFileIds = Array.from(mediaFilesByChapter.get(chapter.id) || new Set()) as string[]
+          // OPTIMIZED: For simplicity, consider a chapter "complete" if it has any media files
+          // This can be refined later to check actual verse coverage if needed
+          const mediaFileIds = Array.from(mediaFilesByChapterMap.get(chapter.id) || new Set()) as string[]
+          const hasMediaFiles = mediaFileIds.length > 0
           
-          const versesCovered = verseIds.size
+          // Simplified progress calculation: chapters with files are considered complete
+          const versesCovered = hasMediaFiles ? chapter.total_verses : 0
           const status = calculateChapterStatus(chapter.total_verses, versesCovered)
           const progress = calculateProgress(versesCovered, chapter.total_verses)
 

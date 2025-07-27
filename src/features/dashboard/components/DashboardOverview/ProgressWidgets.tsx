@@ -32,12 +32,12 @@ export const ProgressWidgets: React.FC<ProgressWidgetsProps> = ({
         title="Audio Bible Progress"
         value={`${Math.round(progressStats?.audioProgress.percentage || 0)}%`}
         subtitle={`${progressStats?.audioProgress.versesWithAudio || 0} of ${progressStats?.audioProgress.totalVerses || 0} chapters`}
-        color="blue"
+        color="secondary"
         isLoading={isLoading}
         icon={
           <ProgressRing
             percentage={progressStats?.audioProgress.percentage || 0}
-            color="blue"
+            color="secondary"
             size="md"
             label="Audio"
           />
@@ -45,7 +45,8 @@ export const ProgressWidgets: React.FC<ProgressWidgetsProps> = ({
       >
         <Progress 
           value={progressStats?.audioProgress.percentage || 0} 
-          className="w-full h-2 bg-blue-200 dark:bg-blue-800"
+          color="primary"
+          className="w-full h-2"
         />
       </MetricCard>
 
@@ -54,12 +55,12 @@ export const ProgressWidgets: React.FC<ProgressWidgetsProps> = ({
         title="Written Bible Progress"
         value={`${Math.round(progressStats?.textProgress.percentage || 0)}%`}
         subtitle={`${progressStats?.textProgress.versesWithText || 0} of ${progressStats?.textProgress.totalVerses || 0} chapters`}
-        color="green"
+        color="secondary"
         isLoading={isLoading}
         icon={
           <ProgressRing
             percentage={progressStats?.textProgress.percentage || 0}
-            color="green"
+            color="secondary"
             size="md"
             label="Text"
           />
@@ -67,7 +68,8 @@ export const ProgressWidgets: React.FC<ProgressWidgetsProps> = ({
       >
         <Progress 
           value={progressStats?.textProgress.percentage || 0} 
-          className="w-full h-2 bg-green-200 dark:bg-green-800"
+          color="secondary"
+          className="w-full h-2"
         />
       </MetricCard>
     </div>

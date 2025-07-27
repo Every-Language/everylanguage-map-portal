@@ -6,7 +6,7 @@ interface MetricCardProps {
   value: string | number;
   subtitle?: string;
   icon?: React.ReactNode;
-  color: 'blue' | 'green' | 'orange' | 'purple' | 'red';
+  color: 'blue' | 'green' | 'orange' | 'purple' | 'red' | 'primary' | 'secondary';
   isLoading?: boolean;
   children?: React.ReactNode;
 }
@@ -46,6 +46,20 @@ const colorStyles = {
     value: 'text-red-900 dark:text-red-100',
     subtitle: 'text-red-700 dark:text-red-300',
     indicator: 'bg-red-500'
+  },
+  primary: {
+    card: 'bg-gradient-to-br from-primary-50 to-primary-100 dark:from-primary-900/20 dark:to-primary-800/20 border-primary-200 dark:border-primary-800',
+    title: 'text-primary-900 dark:text-primary-100',
+    value: 'text-primary-900 dark:text-primary-100',
+    subtitle: 'text-primary-700 dark:text-primary-300',
+    indicator: 'bg-primary-500'
+  },
+  secondary: {
+    card: 'bg-gradient-to-br from-secondary-50 to-secondary-100 dark:from-secondary-900/20 dark:to-secondary-800/20 border-secondary-200 dark:border-secondary-800',
+    title: 'text-secondary-900 dark:text-secondary-100',
+    value: 'text-secondary-900 dark:text-secondary-100',
+    subtitle: 'text-secondary-700 dark:text-secondary-300',
+    indicator: 'bg-secondary-500'
   }
 };
 

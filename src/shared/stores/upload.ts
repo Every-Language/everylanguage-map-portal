@@ -1,309 +1,181 @@
-import { create } from 'zustand'
-import { devtools } from 'zustand/middleware'
-import { supabase } from '../services/supabase'
-import type { 
-  UploadStore, 
-  UploadState, 
-  UploadFile, 
-  UploadBatch,
-  UploadStatus 
-} from './types'
+import { create } from 'zustand';
+import { BulkUploadManager, type BulkUploadFile, type BulkUploadResponse, type BulkUploadProgress } from '../services/bulkUploadService';
 
-// Initial state
-const initialState: UploadState = {
-  batches: [],
-  currentBatch: null,
-  isUploading: false,
-  globalProgress: 0,
-  error: null,
+export interface UploadState {
+  uploadManager: BulkUploadManager | null;
+  isUploading: boolean;
+  uploadProgress: BulkUploadProgress[];
+  showProgress: boolean;
+  
+  // Actions
+  startBulkUpload: (files: BulkUploadFile[], authToken: string) => Promise<BulkUploadResponse>;
+  updateProgress: (progress: BulkUploadProgress[]) => void;
+  clearProgress: () => void;
+  setShowProgress: (show: boolean) => void;
 }
 
-// Create the upload store
-export const useUploadStore = create<UploadStore>()(
-  devtools(
-    (set, get) => ({
-      ...initialState,
+// Global upload manager instance
+let globalUploadManager: BulkUploadManager | null = null;
 
-      // Actions
-      createBatch: (projectId: string, files: File[]) => {
-        const batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-        
-        const uploadFiles: UploadFile[] = files.map((file, index) => ({
-          id: `file_${index}_${Date.now()}`,
-          file,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          status: 'pending',
-          progress: 0,
-          error: null,
-          metadata: {
-            duration: undefined,
-            detectedBook: undefined,
-            detectedChapter: undefined,
-            detectedVerses: undefined,
-          },
-        }))
+export const useUploadStore = create<UploadState>((set, get) => ({
+  uploadManager: null,
+  isUploading: false,
+  uploadProgress: [],
+  showProgress: false,
 
-        const batch: UploadBatch = {
-          id: batchId,
-          files: uploadFiles,
-          projectId,
-          status: 'pending',
-          progress: 0,
-          error: null,
-        }
-
-        const currentBatches = get().batches
-        set({ 
-          batches: [...currentBatches, batch],
-          currentBatch: batch,
-          error: null 
-        })
-
-        return batchId
-      },
-
-      startUpload: async (batchId: string) => {
-        const batch = get().batches.find(b => b.id === batchId)
-        if (!batch) return
-
-        try {
-          set({ isUploading: true, error: null })
-          
-          // Update batch status
-          const updatedBatches = get().batches.map(b => 
-            b.id === batchId 
-              ? { ...b, status: 'uploading' as const, startedAt: new Date() }
-              : b
-          )
-          set({ batches: updatedBatches })
-
-          // Process files sequentially for now
-          for (const file of batch.files) {
-            await get().uploadSingleFile(batchId, file.id)
-          }
-
-          // Mark batch as completed
-          const finalBatches = get().batches.map(b => 
-            b.id === batchId 
-              ? { ...b, status: 'completed' as const, completedAt: new Date(), progress: 100 }
-              : b
-          )
-          set({ batches: finalBatches, isUploading: false })
-
-        } catch (error) {
-          console.error('Upload batch failed:', error)
-          
-          // Mark batch as failed
-          const failedBatches = get().batches.map(b => 
-            b.id === batchId 
-              ? { ...b, status: 'failed' as const, error: error instanceof Error ? error.message : 'Upload failed' }
-              : b
-          )
-          set({ 
-            batches: failedBatches, 
-            isUploading: false,
-            error: error instanceof Error ? error.message : 'Upload failed'
-          })
-        }
-      },
-
-      uploadSingleFile: async (batchId: string, fileId: string) => {
-        const batch = get().batches.find(b => b.id === batchId)
-        const file = batch?.files.find(f => f.id === fileId)
-        
-        if (!batch || !file) return
-
-        try {
-          // Update file status to uploading
-          get().updateFileStatus(batchId, fileId, 'uploading')
-
-          // Upload to Supabase storage
-          const filePath = `${batch.projectId}/${file.name}`
-          
-          const { error: uploadError } = await supabase.storage
-            .from('audio-files')
-            .upload(filePath, file.file, {
-              cacheControl: '3600',
-              upsert: false,
-            })
-
-          if (uploadError) throw uploadError
-
-          // Create database record
-          const { error: dbError } = await supabase
-            .from('media_files')
-            .insert({
-              project_id: batch.projectId,
-              language_entity_id: batch.projectId, // This should be properly set
-              media_type: 'audio',
-              local_path: filePath,
-              file_size: file.size,
-              upload_status: 'completed',
-              duration_seconds: file.metadata?.duration,
-            })
-
-          if (dbError) throw dbError
-
-          // Mark file as completed
-          get().updateFileStatus(batchId, fileId, 'completed')
-
-        } catch (error) {
-          console.error('Single file upload failed:', error)
-          get().updateFileStatus(batchId, fileId, 'failed')
-          get().updateFileError(batchId, fileId, error instanceof Error ? error.message : 'Upload failed')
-        }
-      },
-
-      updateFileStatus: (batchId: string, fileId: string, status: UploadStatus) => {
-        const updatedBatches = get().batches.map(batch => 
-          batch.id === batchId 
-            ? {
-                ...batch,
-                files: batch.files.map(file => 
-                  file.id === fileId ? { ...file, status } : file
-                )
-              }
-            : batch
-        )
-        set({ batches: updatedBatches })
-      },
-
-      updateFileProgress: (batchId: string, fileId: string, progress: number) => {
-        const updatedBatches = get().batches.map(batch => 
-          batch.id === batchId 
-            ? {
-                ...batch,
-                files: batch.files.map(file => 
-                  file.id === fileId ? { ...file, progress } : file
-                ),
-                progress: batch.files.reduce((sum, f) => sum + (f.id === fileId ? progress : f.progress), 0) / batch.files.length
-              }
-            : batch
-        )
-        set({ batches: updatedBatches })
-      },
-
-      updateFileError: (batchId: string, fileId: string, error: string) => {
-        const updatedBatches = get().batches.map(batch => 
-          batch.id === batchId 
-            ? {
-                ...batch,
-                files: batch.files.map(file => 
-                  file.id === fileId ? { ...file, error } : file
-                )
-              }
-            : batch
-        )
-        set({ batches: updatedBatches })
-      },
-
-      pauseUpload: (batchId: string) => {
-        // For now, just mark as paused - full implementation would need to cancel ongoing uploads
-        console.log('Pausing upload for batch:', batchId)
-      },
-
-      resumeUpload: (batchId: string) => {
-        // Resume implementation would restart failed/paused uploads
-        console.log('Resuming upload for batch:', batchId)
-      },
-
-      cancelUpload: (batchId: string) => {
-        const updatedBatches = get().batches.map(batch => 
-          batch.id === batchId 
-            ? { ...batch, status: 'failed' as const, error: 'Upload cancelled' }
-            : batch
-        )
-        set({ batches: updatedBatches, isUploading: false })
-      },
-
-      removeFile: (batchId: string, fileId: string) => {
-        const updatedBatches = get().batches.map(batch => 
-          batch.id === batchId 
-            ? {
-                ...batch,
-                files: batch.files.filter(file => file.id !== fileId)
-              }
-            : batch
-        )
-        set({ batches: updatedBatches })
-      },
-
-      updateFileMetadata: (batchId: string, fileId: string, metadata: UploadFile['metadata']) => {
-        const updatedBatches = get().batches.map(batch => 
-          batch.id === batchId 
-            ? {
-                ...batch,
-                files: batch.files.map(file => 
-                  file.id === fileId 
-                    ? { ...file, metadata: { ...file.metadata, ...metadata } }
-                    : file
-                )
-              }
-            : batch
-        )
-        set({ batches: updatedBatches })
-      },
-
-      clearCompleted: () => {
-        const activeBatches = get().batches.filter(batch => 
-          batch.status === 'pending' || batch.status === 'uploading'
-        )
-        set({ batches: activeBatches })
-      },
-
-      clearError: () => {
-        set({ error: null })
-      },
-    }),
-    {
-      name: 'upload-store',
+  startBulkUpload: async (files: BulkUploadFile[], authToken: string) => {
+    const { isUploading } = get();
+    
+    if (isUploading) {
+      throw new Error('Another upload is already in progress');
     }
-  )
-)
 
-// Selectors for common use cases
-export const useUploadBatches = () => useUploadStore((state) => state.batches)
-export const useCurrentBatch = () => useUploadStore((state) => state.currentBatch)
-export const useIsUploading = () => useUploadStore((state) => state.isUploading)
-export const useGlobalProgress = () => useUploadStore((state) => state.globalProgress)
-export const useUploadError = () => useUploadStore((state) => state.error)
+    // Create or reuse global upload manager with progress callback
+    if (!globalUploadManager) {
+      globalUploadManager = new BulkUploadManager((progress) => {
+        console.log('📊 Progress update received in store:', progress);
+        get().updateProgress(progress);
+      });
+    }
 
-// Action selectors
-export const useUploadActions = () => useUploadStore((state) => ({
-  createBatch: state.createBatch,
-  startUpload: state.startUpload,
-  pauseUpload: state.pauseUpload,
-  resumeUpload: state.resumeUpload,
-  cancelUpload: state.cancelUpload,
-  removeFile: state.removeFile,
-  updateFileMetadata: state.updateFileMetadata,
-  clearCompleted: state.clearCompleted,
-  clearError: state.clearError,
-}))
+    // Initialize progress with pending state for all files immediately
+    const initialProgress: BulkUploadProgress[] = files.map(file => ({
+      mediaFileId: '', // Will be set when response comes back
+      fileName: file.metadata.fileName,
+      status: 'pending' as const
+    }));
 
-// Helper selectors
-export const useBatchById = (batchId: string) => 
-  useUploadStore((state) => state.batches.find(batch => batch.id === batchId))
+    // Set initial state immediately to show progress
+    set({
+      uploadManager: globalUploadManager,
+      isUploading: true,
+      uploadProgress: initialProgress,
+      showProgress: true
+    });
 
-export const useFileById = (batchId: string, fileId: string) => 
-  useUploadStore((state) => {
-    const batch = state.batches.find(b => b.id === batchId)
-    return batch?.files.find(f => f.id === fileId)
-  })
+    try {
+      console.log('🚀 Starting global bulk upload with initial progress...', initialProgress);
+      
+      // Start the upload
+      const result = await globalUploadManager.startBulkUpload(files, authToken);
+      
+      console.log('✅ Bulk upload initiated successfully:', result);
+      
+      // Update progress with actual media file IDs from response
+      if (result.success && result.data?.mediaRecords) {
+        const updatedProgress: BulkUploadProgress[] = result.data.mediaRecords.map(record => ({
+          mediaFileId: record.mediaFileId,
+          fileName: record.fileName,
+          status: record.status,
+          error: record.error,
+          // uploadResult will be populated later when upload completes
+        }));
+        
+        console.log('📋 Updating progress with actual media records:', updatedProgress);
+        
+        // Use a small delay to ensure database operations complete before updating
+        setTimeout(() => {
+          get().updateProgress(updatedProgress);
+        }, 100);
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('❌ Global bulk upload failed:', error);
+      
+      // Reset state on error
+      set({
+        isUploading: false,
+        uploadManager: null,
+        showProgress: false,
+        uploadProgress: []
+      });
+      
+      throw error;
+    }
+  },
 
-export const useActiveBatches = () => 
-  useUploadStore((state) => state.batches.filter(batch => 
-    batch.status === 'pending' || batch.status === 'uploading'
-  ))
+  updateProgress: (progress: BulkUploadProgress[]) => {
+    console.log('🔄 Updating progress in store:', progress);
+    
+    // Ensure we preserve the current state if progress is empty
+    const currentState = get();
+    const newProgress = progress.length > 0 ? progress : currentState.uploadProgress;
+    
+    set({ uploadProgress: newProgress });
+    
+    // Check if all uploads are complete
+    const allComplete = newProgress.length > 0 && newProgress.every(
+      p => p.status === 'completed' || p.status === 'failed'
+    );
 
-export const useCompletedBatches = () => 
-  useUploadStore((state) => state.batches.filter(batch => 
-    batch.status === 'completed'
-  ))
+    if (allComplete) {
+      console.log('🎉 All uploads completed, updating state');
+      
+      set({
+        isUploading: false,
+        uploadManager: null
+      });
+      
+      // Clear the global manager after a delay to allow UI updates
+      setTimeout(() => {
+        if (globalUploadManager) {
+          globalUploadManager.cleanup();
+          globalUploadManager = null;
+        }
+      }, 2000);
+    }
+  },
 
-export const useFailedBatches = () => 
-  useUploadStore((state) => state.batches.filter(batch => 
-    batch.status === 'failed'
-  ))
+  clearProgress: () => {
+    console.log('🧹 Clearing upload progress');
+    set({
+      uploadProgress: [],
+      showProgress: false,
+      isUploading: false,
+      uploadManager: null
+    });
+    
+    if (globalUploadManager) {
+      globalUploadManager.cleanup();
+      globalUploadManager = null;
+    }
+  },
+
+  setShowProgress: (show: boolean) => {
+    set({ showProgress: show });
+  },
+}));
+
+// Helper hook for beforeunload warning
+export const useUploadWarning = () => {
+  const isUploading = useUploadStore(state => state.isUploading);
+  
+  // Set up beforeunload warning
+  React.useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isUploading) {
+        e.preventDefault();
+        e.returnValue = 'Files are still uploading. Are you sure you want to leave?';
+        return 'Files are still uploading. Are you sure you want to leave?';
+      }
+    };
+
+    if (isUploading) {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      console.log('🔒 Upload warning enabled');
+    }
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (!isUploading) {
+        console.log('🔓 Upload warning disabled');
+      }
+    };
+  }, [isUploading]);
+
+  return { isUploading };
+};
+
+// Add React import for the hook
+import React from 'react';

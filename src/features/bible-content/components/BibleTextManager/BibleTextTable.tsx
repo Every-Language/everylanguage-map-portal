@@ -8,7 +8,9 @@ import {
   SelectItem,
   Checkbox,
   Button,
-  LoadingSpinner
+  LoadingSpinner,
+  Input,
+  Pagination
 } from '../../../../shared/design-system';
 import type { VerseTextWithRelations } from '../../../../shared/hooks/query/text-versions';
 
@@ -32,6 +34,10 @@ interface BibleTextTableProps {
   sortDirection: 'asc' | 'desc' | null;
   handleSort: (field: SortField) => void;
   
+  // Search
+  searchText?: string;
+  onSearchChange?: (value: string) => void;
+  
   // Selection
   selectedItems: string[];
   allCurrentPageSelected: boolean;
@@ -49,6 +55,14 @@ interface BibleTextTableProps {
   
   // Modals
   openModal: (modalId: string) => void;
+  
+  // Pagination props
+  currentPage?: number;
+  itemsPerPage?: number;
+  totalItems?: number;
+  totalPages?: number;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
 }
 
 export const BibleTextTable: React.FC<BibleTextTableProps> = ({
@@ -58,6 +72,8 @@ export const BibleTextTable: React.FC<BibleTextTableProps> = ({
   sortField,
   sortDirection,
   handleSort,
+  searchText = '',
+  onSearchChange,
   selectedItems,
   allCurrentPageSelected,
   someCurrentPageSelected,
@@ -67,12 +83,34 @@ export const BibleTextTable: React.FC<BibleTextTableProps> = ({
   handlePublishStatusChange,
   executeBulkOperation,
   clearSelection,
-  openModal
+  openModal,
+  currentPage = 1,
+  itemsPerPage = 25,
+  totalItems = 0,
+  totalPages = 1,
+  onPageChange,
+  onPageSizeChange
 }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Verse Texts ({filteredAndSortedTexts.length} total)</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle>
+            Verse Texts ({totalItems} total{totalPages > 1 ? `, showing ${filteredAndSortedTexts.length} on page ${currentPage}` : ''})
+          </CardTitle>
+          
+          {/* Search Bar */}
+          {onSearchChange && (
+            <div className="w-64">
+              <Input
+                placeholder="Search in verse text..."
+                value={searchText}
+                onChange={(e) => onSearchChange(e.target.value)}
+                className="dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
+              />
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -142,29 +180,17 @@ export const BibleTextTable: React.FC<BibleTextTableProps> = ({
                     <th className="text-left p-3 font-medium text-gray-900 dark:text-gray-100">
                       <button
                         onClick={() => handleSort('version')}
-                        className="flex items-center space-x-1 hover:text-blue-600 dark:hover:text-blue-400"
+                        className="flex items-center space-x-1 hover:text-primary-600 dark:hover:text-primary-400"
                       >
                         <span>Version</span>
                         {sortField === 'version' && (
-                          <span className="text-blue-600 dark:text-blue-400">
+                          <span className="text-primary-600 dark:text-primary-400">
                             {sortDirection === 'asc' ? '↑' : '↓'}
                           </span>
                         )}
                       </button>
                     </th>
-                    <th className="text-left p-3 font-medium text-gray-900 dark:text-gray-100">
-                      <button
-                        onClick={() => handleSort('verse_reference')}
-                        className="flex items-center space-x-1 hover:text-blue-600 dark:hover:text-blue-400"
-                      >
-                        <span>Reference</span>
-                        {sortField === 'verse_reference' && (
-                          <span className="text-blue-600 dark:text-blue-400">
-                            {sortDirection === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
+
                     <th className="text-left p-3 font-medium text-gray-900 dark:text-gray-100">
                       <button
                         onClick={() => handleSort('verse_text')}
@@ -209,11 +235,6 @@ export const BibleTextTable: React.FC<BibleTextTableProps> = ({
                         </span>
                       </td>
                       <td className="p-3">
-                        <span className="text-sm text-gray-600 dark:text-gray-400">
-                          {text.verses?.chapters?.books?.name || ''} {text.verses?.chapters?.chapter_number || 0}:{text.verses?.verse_number || 0}
-                        </span>
-                      </td>
-                      <td className="p-3">
                         <div className="max-w-md">
                           <p className="text-sm text-gray-900 dark:text-gray-100 line-clamp-2">
                             {text.verse_text}
@@ -247,6 +268,23 @@ export const BibleTextTable: React.FC<BibleTextTableProps> = ({
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && onPageChange && (
+              <div className="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  totalItems={totalItems}
+                  itemsPerPage={itemsPerPage}
+                  onPageChange={onPageChange}
+                  onPageSizeChange={onPageSizeChange}
+                  showInfo={true}
+                  showSizeChanger={true}
+                  pageSizeOptions={[10, 25, 50, 100]}
+                />
+              </div>
+            )}
           </div>
         )}
       </CardContent>

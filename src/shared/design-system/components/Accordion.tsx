@@ -12,6 +12,7 @@ const accordionVariants = cva(
         default: 'border border-border rounded-md',
         ghost: 'border-0',
         separated: 'space-y-2',
+        flat: 'border-0 bg-neutral-50 dark:bg-neutral-800/30 rounded-lg',
       },
       size: {
         sm: 'text-sm',
@@ -34,6 +35,7 @@ const accordionItemVariants = cva(
         default: 'border-b border-border last:border-b-0',
         ghost: 'border-0',
         separated: 'border border-border rounded-md',
+        flat: 'border-0 bg-white dark:bg-neutral-900/50 first:rounded-t-lg last:rounded-b-lg mb-1 last:mb-0',
       },
     },
     defaultVariants: {
@@ -50,6 +52,7 @@ const accordionTriggerVariants = cva(
         default: 'px-4',
         ghost: 'px-0',
         separated: 'px-4',
+        flat: 'px-4 hover:bg-neutral-100 dark:hover:bg-neutral-800/70 rounded-lg hover:no-underline',
       },
       size: {
         sm: 'py-2 text-sm',
@@ -72,6 +75,7 @@ const accordionContentVariants = cva(
         default: 'px-4 pb-4 pt-0',
         ghost: 'px-0 pb-4 pt-0',
         separated: 'px-4 pb-4 pt-0',
+        flat: 'px-4 pb-4 pt-0 bg-neutral-50 dark:bg-neutral-800/50',
       },
       size: {
         sm: 'text-xs',
@@ -103,7 +107,7 @@ type AccordionMultipleProps = {
 
 interface AccordionProps {
   className?: string
-  variant?: 'default' | 'ghost' | 'separated'
+  variant?: 'default' | 'ghost' | 'separated' | 'flat'
   size?: 'sm' | 'md' | 'lg'
   children?: React.ReactNode
 }
@@ -112,19 +116,19 @@ type AccordionPropsWithType = AccordionProps & (AccordionSingleProps | Accordion
 
 interface AccordionItemProps extends 
   React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Item> {
-  variant?: 'default' | 'ghost' | 'separated'
+  variant?: 'default' | 'ghost' | 'separated' | 'flat'
 }
 
 interface AccordionTriggerProps extends 
   React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger> {
-  variant?: 'default' | 'ghost' | 'separated'
+  variant?: 'default' | 'ghost' | 'separated' | 'flat'
   size?: 'sm' | 'md' | 'lg'
   hideIcon?: boolean
 }
 
 interface AccordionContentProps extends 
   React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Content> {
-  variant?: 'default' | 'ghost' | 'separated'
+  variant?: 'default' | 'ghost' | 'separated' | 'flat'
   size?: 'sm' | 'md' | 'lg'
 }
 

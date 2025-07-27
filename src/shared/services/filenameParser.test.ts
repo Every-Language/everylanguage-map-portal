@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseFilename, parseFilenames, getParsingStats, getSupportedBooks, getOsisId } from './filenameParser';
+import { parseFilename, parseFilenames, getParsingStats, getSupportedBooks, getOsisId, resolveFullChapterEndVerse } from './filenameParser';
 
 describe('Filename Parser', () => {
   describe('User Format Examples', () => {
@@ -92,7 +92,10 @@ describe('Filename Parser', () => {
       
       expect(result.detectedBook).toBe('Genesis');
       expect(result.detectedChapter).toBe(1);
-      expect(result.detectedStartVerse).toBeUndefined();
+      expect(result.detectedStartVerse).toBe(1);
+      expect(result.detectedEndVerse).toBeUndefined();
+      expect(result.isFullChapter).toBe(true);
+      expect(result.verseRange).toBe('full chapter');
       expect(result.confidence).toBe('high');
     });
 
@@ -130,6 +133,122 @@ describe('Filename Parser', () => {
     });
   });
 
+  describe('BSB Format', () => {
+    it('should correctly parse BSB_01_Gen_007_H.mp3', () => {
+      const result = parseFilename('BSB_01_Gen_007_H.mp3');
+      
+      expect(result.detectedLanguage).toBe('BSB');
+      expect(result.detectedBook).toBe('Genesis');
+      expect(result.detectedBookOsis).toBe('gen');
+      expect(result.detectedChapter).toBe(7);
+      expect(result.detectedStartVerse).toBe(1);
+      expect(result.detectedEndVerse).toBeUndefined();
+      expect(result.isFullChapter).toBe(true);
+      expect(result.verseRange).toBe('full chapter');
+      expect(result.confidence).toBe('high');
+      expect(result.matchedPattern).toBe('BSB_BookNumber_BookAbbr_Chapter_Designation');
+    });
+
+    it('should correctly parse BSB_02_Exo_001_H.mp3', () => {
+      const result = parseFilename('BSB_02_Exo_001_H.mp3');
+      
+      expect(result.detectedLanguage).toBe('BSB');
+      expect(result.detectedBook).toBe('Exodus');
+      expect(result.detectedBookOsis).toBe('exod');
+      expect(result.detectedChapter).toBe(1);
+      expect(result.verseRange).toBe('full chapter');
+      expect(result.confidence).toBe('high');
+    });
+
+    it('should correctly parse BSB_14_2Ch_013_H.mp3', () => {
+      const result = parseFilename('BSB_14_2Ch_013_H.mp3');
+      
+      expect(result.detectedLanguage).toBe('BSB');
+      expect(result.detectedBook).toBe('2 Chronicles');
+      expect(result.detectedBookOsis).toBe('2chr');
+      expect(result.detectedChapter).toBe(13);
+      expect(result.confidence).toBe('high');
+    });
+
+    it('should correctly parse BSB_19_Psa_038_H.mp3', () => {
+      const result = parseFilename('BSB_19_Psa_038_H.mp3');
+      
+      expect(result.detectedLanguage).toBe('BSB');
+      expect(result.detectedBook).toBe('Psalms');
+      expect(result.detectedBookOsis).toBe('ps');
+      expect(result.detectedChapter).toBe(38);
+      expect(result.confidence).toBe('high');
+    });
+
+    it('should correctly parse BSB_43_Jhn_002_H.mp3', () => {
+      const result = parseFilename('BSB_43_Jhn_002_H.mp3');
+      
+      expect(result.detectedLanguage).toBe('BSB');
+      expect(result.detectedBook).toBe('John');
+      expect(result.detectedBookOsis).toBe('john');
+      expect(result.detectedChapter).toBe(2);
+      expect(result.confidence).toBe('high');
+    });
+
+    it('should correctly parse BSB_42_Luk_001_H.mp3', () => {
+      const result = parseFilename('BSB_42_Luk_001_H.mp3');
+      
+      expect(result.detectedLanguage).toBe('BSB');
+      expect(result.detectedBook).toBe('Luke');
+      expect(result.detectedBookOsis).toBe('luke');
+      expect(result.detectedChapter).toBe(1);
+      expect(result.confidence).toBe('high');
+    });
+
+    it('should correctly parse BSB_41_Mrk_015_H.mp3', () => {
+      const result = parseFilename('BSB_41_Mrk_015_H.mp3');
+      
+      expect(result.detectedLanguage).toBe('BSB');
+      expect(result.detectedBook).toBe('Mark');
+      expect(result.detectedBookOsis).toBe('mark');
+      expect(result.detectedChapter).toBe(15);
+      expect(result.confidence).toBe('high');
+    });
+
+    it('should handle invalid BSB book numbers', () => {
+      const result = parseFilename('BSB_99_Unk_001_H.mp3');
+      
+      expect(result.detectedLanguage).toBe('BSB');
+      expect(result.detectedChapter).toBe(1);
+      expect(result.errors).toContain('Unknown book number 99 or abbreviation Unk');
+      expect(result.confidence).toBe('low');
+    });
+
+    it('should handle mismatched book number and abbreviation', () => {
+      const result = parseFilename('BSB_01_Exo_001_H.mp3'); // Genesis number with Exodus abbreviation
+      
+      expect(result.detectedLanguage).toBe('BSB');
+      expect(result.detectedBook).toBe('Genesis'); // Should use book number as primary
+      expect(result.detectedChapter).toBe(1);
+      expect(result.errors).toContain('Book number 01 (Genesis) doesn\'t match abbreviation Exo (Exodus)');
+      expect(result.confidence).toBe('medium');
+    });
+
+    it('should handle invalid chapter numbers', () => {
+      const result = parseFilename('BSB_01_Gen_999_H.mp3');
+      
+      expect(result.detectedLanguage).toBe('BSB');
+      expect(result.detectedBook).toBe('Genesis');
+      expect(result.detectedChapter).toBe(999);
+      expect(result.errors).toContain('Invalid chapter number: 999');
+      expect(result.confidence).toBe('low');
+    });
+
+    it('should not match non-BSB filenames', () => {
+      const result = parseFilename('Lang_Genesis_Chapter001_V001.mp3');
+      
+      // Should fall back to original format parsing
+      expect(result.detectedLanguage).toBe('Lang');
+      expect(result.detectedBook).toBe('Genesis');
+      expect(result.matchedPattern).not.toBe('BSB_BookNumber_BookAbbr_Chapter_Designation');
+    });
+  });
+
   describe('Batch Processing', () => {
     it('should parse multiple filenames', () => {
       const filenames = [
@@ -143,6 +262,23 @@ describe('Filename Parser', () => {
       expect(results[0].detectedBook).toBe('Genesis');
       expect(results[1].detectedBook).toBe('Psalms');
       expect(results[2].detectedBook).toBe('John');
+    });
+
+    it('should parse mixed BSB and original format filenames', () => {
+      const filenames = [
+        'BSB_01_Gen_007_H.mp3',
+        'Lang_Psalms_Chapter023_V001_006.mp3',
+        'BSB_43_Jhn_002_H.mp3'
+      ];
+
+      const results = parseFilenames(filenames);
+      expect(results).toHaveLength(3);
+      expect(results[0].detectedBook).toBe('Genesis');
+      expect(results[0].matchedPattern).toBe('BSB_BookNumber_BookAbbr_Chapter_Designation');
+      expect(results[1].detectedBook).toBe('Psalms');
+      expect(results[1].matchedPattern).toBe('Language_Book_Chapter_Verses');
+      expect(results[2].detectedBook).toBe('John');
+      expect(results[2].matchedPattern).toBe('BSB_BookNumber_BookAbbr_Chapter_Designation');
     });
 
     it('should generate parsing statistics', () => {
@@ -159,6 +295,27 @@ describe('Filename Parser', () => {
       expect(stats.booksDetected).toBe(3);
       expect(stats.osisMapping).toBe(1);
       expect(stats.withErrors).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Chapter Resolution', () => {
+    it('should return original result when not a full chapter', async () => {
+      const originalResult = parseFilename('Lang_Genesis_Chapter001_V001_031.mp3');
+      const resolved = await resolveFullChapterEndVerse(originalResult, 'test-bible-version-id');
+      
+      expect(resolved).toEqual(originalResult);
+    });
+
+    it('should return original result when missing required data', async () => {
+      const incompleteResult = {
+        originalFilename: 'test.mp3',
+        confidence: 'high' as const,
+        isFullChapter: true,
+        // Missing detectedBook, detectedBookOsis, or detectedChapter
+      };
+      const resolved = await resolveFullChapterEndVerse(incompleteResult, 'test-bible-version-id');
+      
+      expect(resolved).toEqual(incompleteResult);
     });
   });
 }); 

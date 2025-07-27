@@ -1,6 +1,5 @@
 import type { ProcessedAudioFile } from './audioFileProcessor';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { supabase } from './supabase';
 
 export interface BulkUploadFile {
   file: ProcessedAudioFile;
@@ -10,7 +9,6 @@ export interface BulkUploadFile {
 export interface BulkUploadMetadata {
   languageEntityId: string;
   audioVersionId: string;
-  projectId?: string;
   fileName: string;
   durationSeconds: number;
   startVerseId: string;
@@ -39,12 +37,8 @@ export interface BulkUploadProgress {
 export interface MediaRecord {
   mediaFileId: string;
   fileName: string;
-  status: 'pending' | 'completed' | 'failed';
-  uploadResult?: {
-    downloadUrl: string;
-    fileSize: number;
+  status: 'pending' | 'uploading' | 'completed' | 'failed';
     version: number;
-  };
   error?: string;
 }
 
@@ -52,55 +46,111 @@ export interface BulkUploadResponse {
   success: boolean;
   data?: {
     totalFiles: number;
-    successfulUploads: number;
-    failedUploads: number;
+    batchId: string;
     mediaRecords: MediaRecord[];
   };
   error?: string;
   details?: string;
 }
 
+// New interfaces for progress tracking
+export interface UploadProgressData {
+  totalFiles: number;
+  pendingCount: number;
+  uploadingCount: number;
+  completedCount: number;
+  failedCount: number;
+  progress: {
+    percentage: number;
+    status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  };
+  files: Array<{
+    mediaFileId: string;
+    fileName: string;
+    status: string;
+    downloadUrl?: string;
+    error?: string;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+}
+
+export interface UploadProgressResponse {
+  success: boolean;
+  data?: UploadProgressData;
+  error?: string;
+}
+
 export class BulkUploadManager {
   private subscription?: RealtimeChannel;
   public progressCallback?: (progress: BulkUploadProgress[]) => void;
   private allProgressState: Map<string, BulkUploadProgress> = new Map();
+  private mediaFileIds: string[] = [];
+  private progressInterval?: NodeJS.Timeout;
 
   constructor(onProgress?: (progress: BulkUploadProgress[]) => void) {
     this.progressCallback = onProgress;
   }
 
   /**
-   * Start bulk upload process
+   * Start bulk upload process using new backend endpoints
    */
   async startBulkUpload(
     files: BulkUploadFile[], 
     authToken: string
   ): Promise<BulkUploadResponse> {
     try {
+      console.log('🚀 Starting bulk upload with files:', files.length);
+      
       // Validate files before upload
       const validationErrors = this.validateBulkUpload(files);
       if (validationErrors.length > 0) {
+        console.error('❌ Validation errors:', validationErrors);
         throw new Error(`Validation failed: ${validationErrors.join(', ')}`);
       }
+
+      console.log('✅ All files passed validation');
 
       // Create FormData for bulk upload
       const formData = new FormData();
       
       files.forEach((item, index) => {
+        console.log(`📁 Adding file ${index}:`, item.file.name, 'with metadata:', item.metadata);
+        
         // Add the file
         formData.append(`file_${index}`, item.file.file);
         
+        // Convert metadata to the new backend format
+        const backendMetadata = {
+          fileName: item.metadata.fileName,
+          languageEntityId: item.metadata.languageEntityId,
+          chapterId: item.metadata.chapterId,
+          startVerseId: item.metadata.startVerseId,
+          endVerseId: item.metadata.endVerseId,
+          durationSeconds: item.metadata.durationSeconds,
+          audioVersionId: item.metadata.audioVersionId,
+          verseTimings: item.metadata.verseTimings?.map(timing => ({
+            verseId: timing.verseId,
+            startTime: timing.startTimeSeconds,
+            endTime: timing.startTimeSeconds + timing.durationSeconds
+          })),
+          tagIds: item.metadata.tagIds
+        };
+        
         // Add metadata as JSON string
-        formData.append(`metadata_${index}`, JSON.stringify(item.metadata));
+        const metadataJson = JSON.stringify(backendMetadata);
+        formData.append(`metadata_${index}`, metadataJson);
+        
+        console.log(`📋 Backend metadata JSON for ${item.file.name}:`, metadataJson);
       });
 
-      // Get Supabase URL
+      // Get Supabase URL from environment
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       if (!supabaseUrl) {
         throw new Error('Supabase URL not configured');
       }
 
-      // Call the bulk upload edge function
+      // Call the new bulk upload edge function
       const response = await fetch(`${supabaseUrl}/functions/v1/upload-bible-chapter-audio-bulk`, {
         method: 'POST',
         headers: {
@@ -132,25 +182,32 @@ export class BulkUploadManager {
         throw new Error(result.error || 'Bulk upload failed');
       }
 
-      // Set up real-time progress tracking
-      this.setupProgressTracking(result.data.mediaRecords);
+      console.log('📋 New edge function response:', result);
 
-      // Initialize progress state
+      // Store media file IDs for progress tracking
+      this.mediaFileIds = result.data.mediaRecords
+        .map(record => record.mediaFileId)
+        .filter(Boolean);
+
+      // Initialize progress state immediately with the response data
       result.data.mediaRecords.forEach(record => {
         const progress: BulkUploadProgress = {
           mediaFileId: record.mediaFileId,
           fileName: record.fileName,
           status: record.status,
-          error: record.error,
-          uploadResult: record.uploadResult
+          error: record.error
         };
         this.allProgressState.set(record.mediaFileId, progress);
       });
 
-      // Notify initial progress
+      // Notify initial progress immediately
+      console.log('📊 Initial progress state:', Array.from(this.allProgressState.values()));
       this.notifyProgress();
 
-      console.log('✅ Bulk upload started successfully:', result);
+      // Start real-time progress tracking using the new progress endpoint
+      this.startProgressTracking(authToken);
+
+      console.log('✅ Bulk upload started successfully with new progress tracking');
       return result;
 
     } catch (error) {
@@ -160,79 +217,122 @@ export class BulkUploadManager {
   }
 
   /**
-   * Set up real-time progress tracking using Supabase subscriptions
+   * Start progress tracking using the new get-upload-progress endpoint
    */
-  private setupProgressTracking(mediaRecords: MediaRecord[]) {
-    const mediaFileIds = mediaRecords
-      .map(r => r.mediaFileId)
-      .filter(Boolean);
-    
-    if (mediaFileIds.length === 0) {
+  private startProgressTracking(authToken: string) {
+    if (this.mediaFileIds.length === 0) {
       console.warn('No media file IDs to track');
       return;
     }
 
-    console.log('🔔 Setting up progress tracking for IDs:', mediaFileIds);
+    console.log('🔔 Starting progress tracking for IDs:', this.mediaFileIds);
 
-    // Subscribe to database changes for these media files
-    this.subscription = supabase
-      .channel('bulk_upload_progress')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'media_files',
-          filter: `id=in.(${mediaFileIds.join(',')})`
-        },
-        (payload: { new: Record<string, unknown> }) => {
-          console.log('📡 Progress update received:', payload);
-          this.handleProgressUpdate(payload.new);
-        }
-      )
-      .subscribe((status) => {
-        console.log('🔔 Subscription status:', status);
-      });
+    // Poll the new progress endpoint every 2 seconds
+    this.progressInterval = setInterval(async () => {
+      try {
+        await this.checkUploadProgress(authToken);
+      } catch (error) {
+        console.error('❌ Progress check error:', error);
+      }
+    }, 2000);
+
+    // Initial check
+    this.checkUploadProgress(authToken);
   }
 
   /**
-   * Handle progress updates from Supabase
+   * Check upload progress using the new endpoint
    */
-  private handleProgressUpdate(updatedRecord: Record<string, unknown>) {
-    const id = updatedRecord.id as string;
-    const uploadStatus = updatedRecord.upload_status as 'pending' | 'uploading' | 'completed' | 'failed';
-    const remotePath = updatedRecord.remote_path as string | undefined;
-    const fileName = updatedRecord.file_name as string | undefined;
-    const fileSize = updatedRecord.file_size as number | undefined;
-    const version = updatedRecord.version as number | undefined;
-    const errorMessage = updatedRecord.error_message as string | undefined;
+  private async checkUploadProgress(authToken: string) {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (!supabaseUrl) {
+      console.error('Supabase URL not configured for progress tracking');
+        return;
+      }
 
-    const progress: BulkUploadProgress = {
-      mediaFileId: id,
-      fileName: remotePath || fileName || 'Unknown',
-      status: uploadStatus,
-      uploadResult: uploadStatus === 'completed' && remotePath && fileSize && version ? {
-        downloadUrl: remotePath,
-        fileSize: fileSize,
-        version: version
-      } : undefined,
-      error: uploadStatus === 'failed' ? errorMessage : undefined
-    };
+      try {
+      const response = await fetch(`${supabaseUrl}/functions/v1/get-upload-progress`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ 
+          mediaFileIds: this.mediaFileIds 
+        }),
+      });
 
-    // Update our progress state
-    this.allProgressState.set(id, progress);
+      if (!response.ok) {
+        throw new Error(`Progress check failed: ${response.statusText}`);
+      }
+
+      const progressResponse: UploadProgressResponse = await response.json();
+
+      if (progressResponse.success && progressResponse.data) {
+        this.handleProgressResponse(progressResponse.data);
+      } else {
+        console.error('Progress check failed:', progressResponse.error);
+      }
+    } catch (error) {
+      console.error('❌ Failed to check upload progress:', error);
+    }
+  }
+
+  /**
+   * Handle progress response from the new endpoint
+   */
+  private handleProgressResponse(data: UploadProgressData) {
+    let hasChanges = false;
+
+    // Update progress state with new data
+    data.files.forEach(file => {
+      const currentProgress = this.allProgressState.get(file.mediaFileId);
+      
+      if (!currentProgress || currentProgress.status !== file.status) {
+        console.log(`📊 Progress update for ${file.fileName}: ${currentProgress?.status} → ${file.status}`);
+        
+        const updatedProgress: BulkUploadProgress = {
+          mediaFileId: file.mediaFileId,
+          fileName: file.fileName,
+          status: file.status as 'pending' | 'uploading' | 'completed' | 'failed',
+          error: file.error,
+          uploadResult: file.downloadUrl ? {
+            downloadUrl: file.downloadUrl,
+            fileSize: 0, // Not provided by new endpoint
+            version: 1   // Default version
+          } : undefined
+        };
+        
+        this.allProgressState.set(file.mediaFileId, updatedProgress);
+        hasChanges = true;
+      }
+    });
+
+    // Notify progress if there are changes
+    if (hasChanges) {
+      console.log('📋 Updated progress state:', Array.from(this.allProgressState.values()));
+      this.notifyProgress();
+    }
+
+    // Stop tracking if all uploads are complete
+    if (data.progress.status === 'completed' || data.progress.status === 'failed') {
+      console.log('🎉 All uploads completed, stopping progress tracking');
+      this.stopProgressTracking();
+    }
+  }
+
+  /**
+   * Stop progress tracking
+   */
+  private stopProgressTracking() {
+    if (this.progressInterval) {
+      clearInterval(this.progressInterval);
+      this.progressInterval = undefined;
+    }
     
-    // Notify listeners
-    this.notifyProgress();
-
-    // Check if all uploads are complete
-    const allComplete = Array.from(this.allProgressState.values()).every(
-      p => p.status === 'completed' || p.status === 'failed'
-    );
-
-    if (allComplete) {
-      console.log('🎉 All uploads completed, cleaning up subscription');
-      this.cleanup();
+    if (this.subscription) {
+      this.subscription.unsubscribe();
+      this.subscription = undefined;
     }
   }
 
@@ -357,6 +457,10 @@ export class BulkUploadManager {
    * Clean up subscriptions and resources
    */
   cleanup() {
+    if (this.progressInterval) {
+      clearInterval(this.progressInterval);
+      this.progressInterval = undefined;
+    }
     if (this.subscription) {
       console.log('🧹 Cleaning up bulk upload subscription');
       this.subscription.unsubscribe();
@@ -368,26 +472,63 @@ export class BulkUploadManager {
 // Helper function to create bulk upload file objects
 export function createBulkUploadFiles(
   processedFiles: ProcessedAudioFile[],
-  projectId: string,
   languageEntityId: string,
   audioVersionId: string
 ): BulkUploadFile[] {
-  return processedFiles
-    .filter(file => file.isValid && file.selectedChapterId && file.selectedStartVerseId && file.selectedEndVerseId)
-    .map(file => ({
-      file,
-      metadata: {
-        languageEntityId,
-        audioVersionId,
-        projectId,
+  console.log('🔍 Creating bulk upload files with:', { 
+    languageEntityId, 
+    audioVersionId, 
+    filesCount: processedFiles.length 
+  });
+
+  // Validate input parameters
+  if (!languageEntityId) {
+    throw new Error('languageEntityId is required');
+  }
+  if (!audioVersionId) {
+    throw new Error('audioVersionId is required');
+  }
+
+  const validFiles = processedFiles.filter(file => {
+    const isValid = file.isValid && 
+      file.selectedChapterId && 
+      file.selectedStartVerseId && 
+      file.selectedEndVerseId;
+    
+    if (!isValid) {
+      console.warn('❌ Filtering out invalid file:', {
         fileName: file.name,
-        durationSeconds: file.duration,
-        startVerseId: file.selectedStartVerseId!,
-        endVerseId: file.selectedEndVerseId!,
-        chapterId: file.selectedChapterId!,
-        // Optional fields
-        verseTimings: undefined, // Not extracting verse timings anymore per instructions
-        tagIds: undefined, // Can be added later if needed
-      }
-    }));
+        isValid: file.isValid,
+        hasChapter: !!file.selectedChapterId,
+        hasStartVerse: !!file.selectedStartVerseId,
+        hasEndVerse: !!file.selectedEndVerseId
+      });
+    }
+    
+    return isValid;
+  });
+
+  console.log(`✅ ${validFiles.length}/${processedFiles.length} files are valid for upload`);
+
+  return validFiles.map(file => {
+    const metadata = {
+      languageEntityId,
+      audioVersionId,
+      fileName: file.name,
+      durationSeconds: file.duration,
+      startVerseId: file.selectedStartVerseId!,
+      endVerseId: file.selectedEndVerseId!,
+      chapterId: file.selectedChapterId!,
+      // Optional fields
+      verseTimings: undefined, // Not extracting verse timings anymore per instructions
+      tagIds: undefined, // Can be added later if needed
+    };
+
+    console.log('📋 Created metadata for file:', file.name, metadata);
+    
+    return {
+      file,
+      metadata
+    };
+  });
 } 

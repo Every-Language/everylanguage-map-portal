@@ -16,6 +16,7 @@ export interface ParsedFilename {
   detectedStartVerse?: number
   detectedEndVerse?: number
   verseRange?: string
+  isFullChapter?: boolean // Indicates if this represents a full chapter (end verse should be looked up)
   confidence: 'high' | 'medium' | 'low' | 'none'
   matchedPattern?: string
   errors?: string[]
@@ -92,6 +93,146 @@ const BOOK_NAME_TO_OSIS: Record<string, string> = {
   '3 John': '3john',
   'Jude': 'jude',
   'Revelation': 'rev'
+}
+
+// BSB format book number to book name mapping
+const BSB_BOOK_NUMBER_TO_NAME: Record<string, string> = {
+  '01': 'Genesis',
+  '02': 'Exodus',
+  '03': 'Leviticus',
+  '04': 'Numbers',
+  '05': 'Deuteronomy',
+  '06': 'Joshua',
+  '07': 'Judges',
+  '08': 'Ruth',
+  '09': '1 Samuel',
+  '10': '2 Samuel',
+  '11': '1 Kings',
+  '12': '2 Kings',
+  '13': '1 Chronicles',
+  '14': '2 Chronicles',
+  '15': 'Ezra',
+  '16': 'Nehemiah',
+  '17': 'Esther',
+  '18': 'Job',
+  '19': 'Psalms',
+  '20': 'Proverbs',
+  '21': 'Ecclesiastes',
+  '22': 'Song of Songs',
+  '23': 'Isaiah',
+  '24': 'Jeremiah',
+  '25': 'Lamentations',
+  '26': 'Ezekiel',
+  '27': 'Daniel',
+  '28': 'Hosea',
+  '29': 'Joel',
+  '30': 'Amos',
+  '31': 'Obadiah',
+  '32': 'Jonah',
+  '33': 'Micah',
+  '34': 'Nahum',
+  '35': 'Habakkuk',
+  '36': 'Zephaniah',
+  '37': 'Haggai',
+  '38': 'Zechariah',
+  '39': 'Malachi',
+  '40': 'Matthew',
+  '41': 'Mark',
+  '42': 'Luke',
+  '43': 'John',
+  '44': 'Acts',
+  '45': 'Romans',
+  '46': '1 Corinthians',
+  '47': '2 Corinthians',
+  '48': 'Galatians',
+  '49': 'Ephesians',
+  '50': 'Philippians',
+  '51': 'Colossians',
+  '52': '1 Thessalonians',
+  '53': '2 Thessalonians',
+  '54': '1 Timothy',
+  '55': '2 Timothy',
+  '56': 'Titus',
+  '57': 'Philemon',
+  '58': 'Hebrews',
+  '59': 'James',
+  '60': '1 Peter',
+  '61': '2 Peter',
+  '62': '1 John',
+  '63': '2 John',
+  '64': '3 John',
+  '65': 'Jude',
+  '66': 'Revelation'
+}
+
+// BSB format three-letter abbreviations to book name mapping
+const BSB_ABBREVIATION_TO_NAME: Record<string, string> = {
+  'Gen': 'Genesis',
+  'Exo': 'Exodus',
+  'Lev': 'Leviticus',
+  'Num': 'Numbers',
+  'Deu': 'Deuteronomy',
+  'Jos': 'Joshua',
+  'Jdg': 'Judges',
+  'Rut': 'Ruth',
+  '1Sa': '1 Samuel',
+  '2Sa': '2 Samuel',
+  '1Ki': '1 Kings',
+  '2Ki': '2 Kings',
+  '1Ch': '1 Chronicles',
+  '2Ch': '2 Chronicles',
+  'Ezr': 'Ezra',
+  'Neh': 'Nehemiah',
+  'Est': 'Esther',
+  'Job': 'Job',
+  'Psa': 'Psalms',
+  'Pro': 'Proverbs',
+  'Ecc': 'Ecclesiastes',
+  'Sng': 'Song of Songs',
+  'Isa': 'Isaiah',
+  'Jer': 'Jeremiah',
+  'Lam': 'Lamentations',
+  'Eze': 'Ezekiel',
+  'Dan': 'Daniel',
+  'Hos': 'Hosea',
+  'Joe': 'Joel',
+  'Amo': 'Amos',
+  'Oba': 'Obadiah',
+  'Jon': 'Jonah',
+  'Mic': 'Micah',
+  'Nah': 'Nahum',
+  'Hab': 'Habakkuk',
+  'Zep': 'Zephaniah',
+  'Hag': 'Haggai',
+  'Zec': 'Zechariah',
+  'Mal': 'Malachi',
+  'Mat': 'Matthew',
+  'Mrk': 'Mark',
+  'Luk': 'Luke',
+  'Jhn': 'John',
+  'Act': 'Acts',
+  'Rom': 'Romans',
+  '1Co': '1 Corinthians',
+  '2Co': '2 Corinthians',
+  'Gal': 'Galatians',
+  'Eph': 'Ephesians',
+  'Phi': 'Philippians',
+  'Col': 'Colossians',
+  '1Th': '1 Thessalonians',
+  '2Th': '2 Thessalonians',
+  '1Ti': '1 Timothy',
+  '2Ti': '2 Timothy',
+  'Tit': 'Titus',
+  'Phm': 'Philemon',
+  'Heb': 'Hebrews',
+  'Jas': 'James',
+  '1Pe': '1 Peter',
+  '2Pe': '2 Peter',
+  '1Jn': '1 John',
+  '2Jn': '2 John',
+  '3Jn': '3 John',
+  'Jud': 'Jude',
+  'Rev': 'Revelation'
 }
 
 // Common book name variations to handle different spellings/abbreviations
@@ -284,12 +425,97 @@ function extractVerseNumbers(text: string): { startVerse: number | null, endVers
 }
 
 /**
- * Main parsing function for the specific format: Language_BookName_ChapterXXX_VXXX_XXX.mp3
+ * Parse BSB format filename: BSB_XX_AAA_XXX_H.mp3
+ * Where XX = book number, AAA = book abbreviation, XXX = chapter, H = designation
+ */
+function parseBSBFormat(filename: string): ParsedFilename | null {
+  // Pattern: BSB_XX_AAA_XXX_H.mp3
+  const bsbPattern = /^BSB_(\d{2})_([A-Za-z0-9]{3})_(\d{3})_([A-Z])$/i
+  const match = filename.match(bsbPattern)
+  
+  if (!match) {
+    return null
+  }
+  
+  const [, bookNumber, bookAbbr, chapterStr] = match
+  
+  const result: ParsedFilename = {
+    originalFilename: filename + '.mp3',
+    detectedLanguage: 'BSB',
+    confidence: 'high',
+    errors: [],
+    matchedPattern: 'BSB_BookNumber_BookAbbr_Chapter_Designation'
+  }
+  
+  // Parse chapter number
+  const chapter = parseInt(chapterStr, 10)
+  result.detectedChapter = chapter
+  
+  if (chapter < 1 || chapter > 150) {
+    result.errors?.push(`Invalid chapter number: ${chapter}`)
+    result.confidence = 'low'
+  }
+  
+  // Try to get book name from book number first (more reliable)
+  let bookName = BSB_BOOK_NUMBER_TO_NAME[bookNumber]
+  
+  // If not found by number, try abbreviation
+  if (!bookName) {
+    bookName = BSB_ABBREVIATION_TO_NAME[bookAbbr]
+  }
+  
+  // Cross-validate if we have both
+  if (bookName && BSB_BOOK_NUMBER_TO_NAME[bookNumber] && BSB_ABBREVIATION_TO_NAME[bookAbbr]) {
+    const bookByNumber = BSB_BOOK_NUMBER_TO_NAME[bookNumber]
+    const bookByAbbr = BSB_ABBREVIATION_TO_NAME[bookAbbr]
+    
+    if (bookByNumber !== bookByAbbr) {
+      result.errors?.push(`Book number ${bookNumber} (${bookByNumber}) doesn't match abbreviation ${bookAbbr} (${bookByAbbr})`)
+      result.confidence = 'medium'
+      // Use book number as it's generally more reliable
+      bookName = bookByNumber
+    }
+  }
+  
+  if (bookName) {
+    result.detectedBook = bookName
+    result.detectedBookOsis = BOOK_NAME_TO_OSIS[bookName]
+    
+    if (!result.detectedBookOsis) {
+      result.errors?.push(`Book "${bookName}" not found in OSIS mapping`)
+      result.confidence = 'medium'
+    }
+  } else {
+    result.errors?.push(`Unknown book number ${bookNumber} or abbreviation ${bookAbbr}`)
+    result.confidence = 'low'
+  }
+  
+  // For BSB format, no verses are specified, so assume full chapter
+  // This means startVerse = 1 and endVerse should be looked up from database
+  result.detectedStartVerse = 1
+  result.detectedEndVerse = undefined
+  result.isFullChapter = true
+  result.verseRange = 'full chapter'
+  
+  return result
+}
+
+/**
+ * Main parsing function supporting multiple formats:
+ * 1. BSB format: BSB_XX_AAA_XXX_H.mp3
+ * 2. Original format: Language_BookName_ChapterXXX_VXXX_XXX.mp3
  */
 export function parseFilename(filename: string): ParsedFilename {
-  // Remove file extension
+  // Remove file extension for pattern matching
   const cleanFilename = filename.replace(/\.[^/.]+$/, '').trim()
   
+  // Try BSB format first
+  const bsbResult = parseBSBFormat(cleanFilename)
+  if (bsbResult) {
+    return bsbResult
+  }
+  
+  // Fall back to original format parsing
   const result: ParsedFilename = {
     originalFilename: filename,
     confidence: 'none',
@@ -333,7 +559,7 @@ export function parseFilename(filename: string): ParsedFilename {
     const { startVerse, endVerse } = extractVerseNumbers(afterChapter)
     if (startVerse) {
       result.detectedStartVerse = startVerse
-      result.detectedEndVerse = endVerse || startVerse
+      result.detectedEndVerse = endVerse ?? startVerse
       
       if (endVerse) {
         result.verseRange = `${startVerse}-${endVerse}`
@@ -353,7 +579,7 @@ export function parseFilename(filename: string): ParsedFilename {
       }
     }
     
-    // Set matched pattern
+    // Set matched pattern and handle full chapter cases
     if (result.detectedBook && result.detectedChapter && result.detectedStartVerse) {
       result.matchedPattern = 'Language_Book_Chapter_Verses'
       if (result.confidence === 'none') {
@@ -361,6 +587,11 @@ export function parseFilename(filename: string): ParsedFilename {
       }
     } else if (result.detectedBook && result.detectedChapter) {
       result.matchedPattern = 'Language_Book_Chapter'
+      // If we have book and chapter but no verses, assume full chapter
+      result.detectedStartVerse = 1
+      result.detectedEndVerse = undefined
+      result.isFullChapter = true
+      result.verseRange = 'full chapter'
       if (result.confidence === 'none') {
         result.confidence = 'medium'
       }
@@ -444,4 +675,70 @@ export function getSupportedBooks(): string[] {
  */
 export function getOsisId(bookName: string): string | undefined {
   return BOOK_NAME_TO_OSIS[bookName]
+}
+
+/**
+ * Resolve end verse number for full chapter recordings by looking up chapter's total_verses
+ * @param parsedResult - The result from parseFilename
+ * @param bibleVersionId - The bible version ID to look up chapter data
+ * @returns Updated ParsedFilename with resolved end verse, or original if not applicable
+ */
+export async function resolveFullChapterEndVerse(
+  parsedResult: ParsedFilename,
+  bibleVersionId: string
+): Promise<ParsedFilename> {
+  // Only resolve if this is marked as a full chapter and we have the required data
+  if (!parsedResult.isFullChapter || !parsedResult.detectedBookOsis || !parsedResult.detectedChapter || !parsedResult.detectedBook) {
+    return parsedResult
+  }
+
+  try {
+    // Import supabase dynamically to avoid circular dependencies
+    const { supabase } = await import('./supabase')
+    
+    // Look up the chapter to get total_verses
+    const { data: chapter, error } = await supabase
+      .from('chapters')
+      .select(`
+        total_verses,
+        books!inner (
+          id,
+          name,
+          bible_version_id
+        )
+      `)
+      .eq('books.bible_version_id', bibleVersionId)
+      .eq('chapter_number', parsedResult.detectedChapter)
+      .eq('books.name', parsedResult.detectedBook)
+      .single()
+
+    if (error) {
+      console.warn('Failed to resolve chapter verses:', error)
+      return {
+        ...parsedResult,
+        errors: [...(parsedResult.errors || []), `Failed to resolve chapter verses: ${error.message}`]
+      }
+    }
+
+    if (!chapter) {
+      return {
+        ...parsedResult,
+        errors: [...(parsedResult.errors || []), 'Chapter not found in database']
+      }
+    }
+
+    // Update the result with the actual end verse
+    return {
+      ...parsedResult,
+      detectedEndVerse: chapter.total_verses,
+      verseRange: `1-${chapter.total_verses}`,
+    }
+
+  } catch (error) {
+    console.warn('Error resolving chapter verses:', error)
+    return {
+      ...parsedResult,
+      errors: [...(parsedResult.errors || []), `Error resolving chapter verses: ${error}`]
+    }
+  }
 } 

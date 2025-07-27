@@ -1,209 +1,206 @@
 
-import { 
-  Card, 
-  CardContent, 
-  CardHeader, 
-  CardTitle,
-  Button,
-  Progress,
-  Alert,
-  LoadingSpinner
-} from '../../../shared/design-system/components';
-import { useBulkUploadProgress } from '../../../shared/hooks/useBulkUploadProgress';
-import { 
-  CheckCircleIcon, 
-  ExclamationTriangleIcon, 
-  ArrowPathIcon,
-  XMarkIcon 
-} from '@heroicons/react/24/outline';
+import { XMarkIcon } from '@heroicons/react/24/outline';
+import { Button } from '../../../shared/design-system/components/Button';
+import { Progress } from '../../../shared/design-system/components/Progress';
+import { LoadingSpinner } from '../../../shared/design-system/components/LoadingSpinner';
+import { useUploadStore } from '../../../shared/stores/upload';
+import type { UploadProgressData } from '../../../shared/services/bulkUploadService';
 
-interface UploadProgressDisplayProps {
+export interface UploadProgressDisplayProps {
   className?: string;
+  /** Optional: Use external progress data instead of the upload store */
+  externalProgressData?: UploadProgressData | null;
+  /** Optional: Control visibility externally */
+  visible?: boolean;
+  /** Optional: External close handler */
+  onClose?: () => void;
 }
 
-export function UploadProgressDisplay({ className = '' }: UploadProgressDisplayProps) {
-  const {
-    progress,
-    summary,
-    isActive,
-    stopTracking,
-    hasActiveUploads,
-    isComplete,
-    hasFailures,
-    getFilesByStatus
-  } = useBulkUploadProgress({
-    autoCleanup: false, // Don't auto-cleanup so user can see final results
-    showPageLeaveWarning: true
-  });
+export function UploadProgressDisplay({ 
+  className = '', 
+  externalProgressData = null,
+  visible = undefined,
+  onClose = undefined
+}: UploadProgressDisplayProps) {
+  const { 
+    uploadProgress: storeProgress, 
+    isUploading, 
+    showProgress: storeShowProgress, 
+    clearProgress, 
+    setShowProgress 
+  } = useUploadStore();
 
-  // Don't show anything if no uploads are active or tracked
-  if (!isActive && progress.length === 0) {
+  // Use external data if provided, otherwise fall back to store
+  const progressData = externalProgressData;
+  
+  // Determine visibility
+  const shouldShow = visible !== undefined ? visible : (storeShowProgress && storeProgress.length > 0);
+  
+  if (!shouldShow && !progressData) {
     return null;
   }
 
-  const completedFiles = getFilesByStatus('completed');
-  const uploadingFiles = getFilesByStatus('uploading');
-  const pendingFiles = getFilesByStatus('pending');
+  // Calculate summary from new backend data structure or fall back to store data
+  let summary;
+  let progressPercentage;
+  let isComplete;
+  let hasActiveUploads;
 
-  const progressPercentage = summary.total > 0 
-    ? Math.round(((summary.completed + summary.failed) / summary.total) * 100) 
-    : 0;
+  if (progressData) {
+    // Use new backend data structure
+    summary = {
+      total: progressData.totalFiles,
+      completed: progressData.completedCount,
+      failed: progressData.failedCount,
+      uploading: progressData.uploadingCount,
+      pending: progressData.pendingCount,
+    };
+    progressPercentage = progressData.progress.percentage;
+    isComplete = progressData.progress.status === 'completed' || progressData.progress.status === 'failed';
+    hasActiveUploads = progressData.progress.status === 'in_progress' || progressData.progress.status === 'pending';
+  } else {
+    // Fall back to store data structure
+    summary = {
+      total: storeProgress.length,
+      completed: storeProgress.filter(p => p.status === 'completed').length,
+      failed: storeProgress.filter(p => p.status === 'failed').length,
+      uploading: storeProgress.filter(p => p.status === 'uploading').length,
+      pending: storeProgress.filter(p => p.status === 'pending').length,
+    };
+    isComplete = summary.total > 0 && (summary.completed + summary.failed) === summary.total;
+    hasActiveUploads = isUploading || summary.uploading > 0 || summary.pending > 0;
+    progressPercentage = summary.total > 0 
+      ? Math.round(((summary.completed + summary.failed) / summary.total) * 100) 
+      : 0;
+  }
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircleIcon className="h-5 w-5 text-green-500" />;
-      case 'failed':
-        return <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />;
-      case 'uploading':
-        return <LoadingSpinner className="h-5 w-5" />;
-      case 'pending':
-      default:
-        return <ArrowPathIcon className="h-5 w-5 text-yellow-500" />;
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'text-green-700 bg-green-50 border-green-200';
-      case 'failed':
-        return 'text-red-700 bg-red-50 border-red-200';
-      case 'uploading':
-        return 'text-blue-700 bg-blue-50 border-blue-200';
-      case 'pending':
-      default:
-        return 'text-yellow-700 bg-yellow-50 border-yellow-200';
+  const handleDismiss = () => {
+    if (onClose) {
+      onClose();
+    } else if (hasActiveUploads) {
+      setShowProgress(false);
+    } else {
+      clearProgress();
     }
   };
 
   return (
-    <Card className={`${className} border-2 ${isComplete ? 'border-green-200' : hasActiveUploads ? 'border-blue-200' : 'border-neutral-200'}`}>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold flex items-center space-x-2">
-            {hasActiveUploads && <LoadingSpinner className="h-5 w-5" />}
-            <span>
-              {hasActiveUploads ? 'Uploading Files' : isComplete ? 'Upload Complete' : 'Upload Status'}
-            </span>
-          </CardTitle>
+    <div className={`${className} w-full bg-secondary-50 dark:bg-secondary-900/20 border-b border-secondary-200 dark:border-secondary-700`}>
+      <div className="w-full px-4 py-3">
+        <div className="flex items-center justify-between mb-3">
+          {/* Progress info */}
+          <div className="flex items-center space-x-4 flex-1">
+            <div className="text-sm font-medium text-secondary-800 dark:text-secondary-200">
+              {hasActiveUploads ? 'Uploading' : isComplete ? 'Upload Complete' : 'Upload Status'}
+            </div>
+            
+            <div className="flex-1 max-w-md">
+              <Progress 
+                value={progressPercentage} 
+                className="w-full h-2"
+              />
+            </div>
+            
+            <div className="text-sm text-secondary-700 dark:text-secondary-300">
+              {progressPercentage}% - {summary.completed + summary.failed} of {summary.total} files
+              {summary.uploading > 0 && ` (${summary.uploading} uploading)`}
+              {summary.pending > 0 && summary.uploading === 0 && ` (${summary.pending} pending)`}
+            </div>
+          </div>
+
+          {/* Dismiss button */}
           <Button
             variant="ghost"
             size="sm"
-            onClick={stopTracking}
-            className="text-neutral-500 hover:text-neutral-700"
+            onClick={handleDismiss}
+            className="text-secondary-500 hover:text-secondary-700 dark:text-secondary-400 dark:hover:text-secondary-300"
           >
             <XMarkIcon className="h-4 w-4" />
           </Button>
         </div>
-      </CardHeader>
 
-      <CardContent className="space-y-4">
-        {/* Overall Progress */}
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="font-medium">Overall Progress</span>
-            <span>{summary.completed + summary.failed} of {summary.total} files</span>
+        {/* Status summary cards */}
+        <div className="grid grid-cols-4 gap-3 mb-4">
+          <div className="text-center p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+            <div className="text-lg font-bold text-yellow-800 dark:text-yellow-200">{summary.pending}</div>
+            <div className="text-xs text-yellow-600 dark:text-yellow-300">Pending</div>
           </div>
-          <Progress 
-            value={progressPercentage} 
-            className="w-full h-2"
-            color={hasFailures && isComplete ? 'warning' : 'primary'}
-          />
-          <div className="text-xs text-neutral-600">
-            {progressPercentage}% complete
+          <div className="text-center p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+            <div className="text-lg font-bold text-blue-800 dark:text-blue-200 flex items-center justify-center">
+              {summary.uploading}
+              {summary.uploading > 0 && <LoadingSpinner size="sm" className="ml-1" />}
+            </div>
+            <div className="text-xs text-blue-600 dark:text-blue-300">Uploading</div>
+          </div>
+          <div className="text-center p-2 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+            <div className="text-lg font-bold text-green-800 dark:text-green-200">{summary.completed}</div>
+            <div className="text-xs text-green-600 dark:text-green-300">Completed</div>
+          </div>
+          <div className="text-center p-2 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+            <div className="text-lg font-bold text-red-800 dark:text-red-200">{summary.failed}</div>
+            <div className="text-xs text-red-600 dark:text-red-300">Failed</div>
           </div>
         </div>
 
-        {/* Status Summary */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="text-center p-3 bg-neutral-50 rounded-lg">
-            <div className="text-lg font-bold text-neutral-700">{summary.pending}</div>
-            <div className="text-xs text-neutral-600">Pending</div>
-          </div>
-          <div className="text-center p-3 bg-blue-50 rounded-lg">
-            <div className="text-lg font-bold text-blue-700">{summary.uploading}</div>
-            <div className="text-xs text-blue-600">Uploading</div>
-          </div>
-          <div className="text-center p-3 bg-green-50 rounded-lg">
-            <div className="text-lg font-bold text-green-700">{summary.completed}</div>
-            <div className="text-xs text-green-600">Completed</div>
-          </div>
-          <div className="text-center p-3 bg-red-50 rounded-lg">
-            <div className="text-lg font-bold text-red-700">{summary.failed}</div>
-            <div className="text-xs text-red-600">Failed</div>
-          </div>
-        </div>
-
-        {/* Failed Files Alert */}
-        {hasFailures && (
-          <Alert variant="destructive">
-            <ExclamationTriangleIcon className="h-4 w-4" />
-            <div>
-              <div className="font-medium">Some uploads failed</div>
-              <div className="text-sm mt-1">
-                {summary.failed} of {summary.total} files failed to upload. Check the file list below for details.
-              </div>
-            </div>
-          </Alert>
-        )}
-
-        {/* Success Message */}
-        {isComplete && !hasFailures && (
-          <Alert>
-            <CheckCircleIcon className="h-4 w-4" />
-            <div>
-              <div className="font-medium">All uploads completed successfully!</div>
-              <div className="text-sm mt-1">
-                {summary.completed} files were uploaded successfully.
-              </div>
-            </div>
-          </Alert>
-        )}
-
-        {/* File List - Show only if there are many files or failures */}
-        {(progress.length > 10 || hasFailures) && (
-          <div className="space-y-2">
-            <h4 className="font-medium text-sm">File Details</h4>
-            <div className="max-h-48 overflow-y-auto space-y-1">
-              {progress.map((file) => (
-                <div
-                  key={file.mediaFileId}
-                  className={`flex items-center justify-between p-2 rounded border text-sm ${getStatusColor(file.status)}`}
-                >
-                  <div className="flex items-center space-x-2 flex-1 min-w-0">
-                    {getStatusIcon(file.status)}
-                    <span className="truncate" title={file.fileName}>
-                      {file.fileName}
-                    </span>
-                  </div>
-                  <div className="ml-2 text-xs capitalize">
-                    {file.status}
-                  </div>
+        {/* Individual file progress - show if we have detailed file data */}
+        {progressData?.files && progressData.files.length > 0 && (
+          <div className="space-y-2 max-h-32 overflow-y-auto bg-white dark:bg-secondary-800 rounded-lg border border-secondary-200 dark:border-secondary-700 p-2">
+            {progressData.files.map((file) => (
+              <div key={file.mediaFileId} className="flex items-center justify-between p-2 bg-secondary-50 dark:bg-secondary-700 rounded">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-secondary-900 dark:text-secondary-100 truncate">
+                    {file.fileName}
+                  </p>
+                  {file.error && (
+                    <p className="text-xs text-red-600 dark:text-red-400 truncate">
+                      Error: {file.error}
+                    </p>
+                  )}
                 </div>
-              ))}
-            </div>
+                <div className="flex items-center space-x-2 ml-3">
+                  <span className={`text-xs px-2 py-1 rounded font-medium ${
+                    file.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                    file.status === 'failed' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
+                    file.status === 'uploading' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
+                    'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                  }`}>
+                    {file.status}
+                  </span>
+                  {file.status === 'uploading' && <LoadingSpinner size="sm" />}
+                  {file.status === 'completed' && <span className="text-green-600 dark:text-green-400">✓</span>}
+                  {file.status === 'failed' && <span className="text-red-600 dark:text-red-400">✗</span>}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Simple file count for small uploads */}
-        {progress.length <= 10 && !hasFailures && (
-          <div className="text-sm text-neutral-600">
-            {hasActiveUploads ? (
-              <div className="space-y-1">
-                {uploadingFiles.length > 0 && (
-                  <div>⬆️ Uploading: {uploadingFiles.map(f => f.fileName).join(', ')}</div>
-                )}
-                {pendingFiles.length > 0 && (
-                  <div>⏳ Pending: {pendingFiles.length} files</div>
-                )}
+        {/* Fall back to store progress display if no detailed backend data */}
+        {!progressData?.files && storeProgress.length > 0 && (
+          <div className="space-y-2 max-h-32 overflow-y-auto bg-white dark:bg-secondary-800 rounded-lg border border-secondary-200 dark:border-secondary-700 p-2">
+            {storeProgress.map((progress) => (
+              <div key={progress.mediaFileId || progress.fileName} className="flex items-center justify-between p-2 bg-secondary-50 dark:bg-secondary-700 rounded">
+                <span className="text-sm font-medium text-secondary-900 dark:text-secondary-100 truncate flex-1">
+                  {progress.fileName}
+                </span>
+                <div className="flex items-center space-x-2 ml-3">
+                  <span className={`text-xs px-2 py-1 rounded font-medium ${
+                    progress.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                    progress.status === 'failed' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
+                    progress.status === 'uploading' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
+                    'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                  }`}>
+                    {progress.status}
+                  </span>
+                  {progress.status === 'uploading' && <LoadingSpinner size="sm" />}
+                  {progress.status === 'completed' && <span className="text-green-600 dark:text-green-400">✓</span>}
+                  {progress.status === 'failed' && <span className="text-red-600 dark:text-red-400">✗</span>}
+                </div>
               </div>
-            ) : (
-              <div>✅ Upload completed: {completedFiles.map(f => f.fileName).join(', ')}</div>
-            )}
+            ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 } 

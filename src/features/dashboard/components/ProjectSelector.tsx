@@ -295,7 +295,7 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                               </div>
                               <div className="w-16 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                                 <div 
-                                  className="h-full bg-gradient-to-r from-blue-500 to-purple-600 transition-all duration-300"
+                                  className="h-full bg-gradient-to-r from-primary-500 to-primary-600 transition-all duration-300"
                                   style={{ width: `${project.progress}%` }}
                                 />
                               </div>

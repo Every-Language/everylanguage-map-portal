@@ -23,7 +23,11 @@ import {
 import { useAuth } from '../../../features/auth/hooks/useAuth';
 import { useToast } from '../../../shared/design-system/hooks/useToast';
 import { useDownload } from '../../../shared/hooks/useDownload';
+import { useAudioPlayerStore } from '../../../shared/stores/audioPlayer';
+import { useSelectedProject } from '../../../features/dashboard/hooks/useSelectedProject';
+import { useVerseMarking } from './useVerseMarking';
 import { useMemo, useCallback, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 // Type definitions for the audio file management
 export interface AudioFileFilters {
@@ -49,7 +53,7 @@ export interface AudioVersionForm extends Record<string, unknown> {
 }
 
 type PublishStatus = 'pending' | 'published' | 'archived';
-type SortField = 'filename' | 'publish_status' | 'upload_status' | 'created_at';
+type SortField = 'filename' | 'publish_status' | 'upload_status' | 'created_at' | 'verse_reference';
 
 export function useAudioFileManagement(projectId: string | null) {
   // Core data table state management
@@ -65,15 +69,23 @@ export function useAudioFileManagement(projectId: string | null) {
     initialSort: {
       field: 'created_at',
       direction: 'desc'
-    }
+    },
+    initialPage: 1,
+    initialItemsPerPage: 25
   });
 
   // Modal state management
   const modalState = useModalState();
 
   // Audio player state
-  const [currentAudioFile, setCurrentAudioFile] = useState<MediaFileWithVerseInfo | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const { playFile } = useAudioPlayerStore();
+  const [loadingAudioId, setLoadingAudioId] = useState<string | null>(null);
+
+  // Project context
+  const { selectedProject } = useSelectedProject();
+
+  // Verse marking functionality
+  const verseMarking = useVerseMarking();
 
   // Form state for editing audio files
   const editForm = useFormState<AudioFileEditForm>({
@@ -106,13 +118,24 @@ export function useAudioFileManagement(projectId: string | null) {
   const { dbUser } = useAuth();
   const { toast } = useToast();
   const { downloadState, downloadFile, clearError } = useDownload();
+  const queryClient = useQueryClient();
 
   // Data fetching
   const { data: mediaFiles, isLoading: mediaFilesLoading, error, refetch } = useMediaFilesByProject(projectId);
   const { data: audioVersions, isLoading: audioVersionsLoading, refetch: refetchAudioVersions } = useAudioVersionsByProject(projectId || '');
   const { data: bibleVersions } = useBibleVersions();
   const { data: books, isLoading: booksLoading } = useBooks();
-  const { data: chapters, isLoading: chaptersLoading } = useChaptersByBook(tableState.filters.bookId !== 'all' ? tableState.filters.bookId as string : null);
+  
+  // Fetch chapters for both filter display and edit modal
+  const filterBookId = tableState.filters.bookId !== 'all' ? tableState.filters.bookId as string : null;
+  const editFormBookId = editForm.data.bookId || null;
+  const { data: filterChapters, isLoading: filterChaptersLoading } = useChaptersByBook(filterBookId);
+  const { data: editChapters, isLoading: editChaptersLoading } = useChaptersByBook(editFormBookId);
+  
+  // Combine chapters from both filter and edit contexts, prioritizing edit chapters when available
+  const chapters = editFormBookId ? editChapters : filterChapters;
+  const chaptersLoading = editFormBookId ? editChaptersLoading : filterChaptersLoading;
+  
   const { data: chapterVerses } = useVersesByChapter(editForm.data.chapterId || null);
 
   // Mutations
@@ -138,9 +161,9 @@ export function useAudioFileManagement(projectId: string | null) {
     }
   }), [audioVersionForm]);
 
-  // Filter and sort media files
+  // Filter and sort media files (global filtering for search)
   const filteredAndSortedFiles = useMemo(() => {
-    if (!mediaFiles || !projectId) return [];
+    if (!mediaFiles || !projectId) return { all: [], paginated: [], totalCount: 0 };
     
     const filtered = mediaFiles.filter((file: MediaFileWithVerseInfo) => {
       const matchesAudioVersion = tableState.filters.audioVersionId === 'all' || file.audio_version_id === tableState.filters.audioVersionId;
@@ -183,6 +206,29 @@ export function useAudioFileManagement(projectId: string | null) {
           comparison = dateA - dateB;
           break;
         }
+        case 'verse_reference': {
+          // Sort by global book order first, then chapter number, then start verse number
+          const bookOrderA = a.book_global_order || 999;
+          const bookOrderB = b.book_global_order || 999;
+          
+          if (bookOrderA !== bookOrderB) {
+            comparison = bookOrderA - bookOrderB;
+          } else {
+            // Same book, sort by chapter number
+            const chapterA = a.chapter_number || 0;
+            const chapterB = b.chapter_number || 0;
+            
+            if (chapterA !== chapterB) {
+              comparison = chapterA - chapterB;
+            } else {
+              // Same chapter, sort by start verse number
+              const verseA = a.start_verse_number || 0;
+              const verseB = b.start_verse_number || 0;
+              comparison = verseA - verseB;
+            }
+          }
+          break;
+        }
         default:
           comparison = 0;
       }
@@ -190,11 +236,21 @@ export function useAudioFileManagement(projectId: string | null) {
       return tableState.sortDirection === 'desc' ? -comparison : comparison;
     });
 
-    return sorted;
-  }, [mediaFiles, projectId, tableState.filters, tableState.sortField, tableState.sortDirection]);
+    // Apply pagination to the sorted results
+    const startIndex = (tableState.currentPage - 1) * tableState.itemsPerPage;
+    const endIndex = startIndex + tableState.itemsPerPage;
+    const paginated = sorted.slice(startIndex, endIndex);
+
+    return {
+      all: sorted,
+      paginated: paginated,
+      totalCount: sorted.length
+    };
+  }, [mediaFiles, projectId, tableState.filters, tableState.sortField, tableState.sortDirection, tableState.currentPage, tableState.itemsPerPage]);
 
   // Bulk operations setup
-  const bulkOps = useBulkOperations(filteredAndSortedFiles, {
+  const bulkOps = useBulkOperations(filteredAndSortedFiles.paginated, {
+    getId: (file) => file.id,
     operations: [
       {
         id: 'pending',
@@ -286,10 +342,6 @@ export function useAudioFileManagement(projectId: string | null) {
     }
 
     try {
-      // Get project information
-      const selectedProject = await import('../../../features/dashboard/hooks/useSelectedProject')
-        .then(module => module.useSelectedProject().selectedProject);
-      
       if (!selectedProject?.target_language_entity_id) {
         toast({
           title: 'Project configuration error',
@@ -333,7 +385,7 @@ export function useAudioFileManagement(projectId: string | null) {
     }
 
     try {
-      setCurrentAudioFile(file);
+      setLoadingAudioId(file.id);
       
       // Get presigned URL for streaming
       const downloadService = await import('../../../shared/services/downloadService');
@@ -341,46 +393,64 @@ export function useAudioFileManagement(projectId: string | null) {
       const result = await service.getDownloadUrls([file.remote_path]);
       
       if (result.success && result.urls[file.remote_path]) {
-        setAudioUrl(result.urls[file.remote_path]);
-        modalState.openModal('audioPlayer');
+        playFile(file, result.urls[file.remote_path]);
       } else {
         console.error('Failed to get streaming URL');
       }
     } catch (error) {
       console.error('Error getting audio URL:', error);
+    } finally {
+      setLoadingAudioId(null);
     }
-  }, [modalState]);
+  }, [playFile, setLoadingAudioId]);
+
+  const handleVerseMarking = useCallback((file: MediaFileWithVerseInfo) => {
+    verseMarking.openModal(file);
+  }, [verseMarking]);
 
   const handleDownload = useCallback(async (file: MediaFileWithVerseInfo) => {
     await downloadFile(file);
   }, [downloadFile]);
 
-  const handleDelete = useCallback(async (file: MediaFileWithVerseInfo) => {
-    if (!confirm(`Are you sure you want to delete "${file.filename}"? This action can be undone.`)) {
-      return;
-    }
-    
-    try {
-      await softDeleteFiles.mutateAsync({
-        fileIds: [file.id]
-      });
-    } catch (error) {
-      console.error('Error deleting file:', error);
-    }
-  }, [softDeleteFiles]);
-
   const handleUploadComplete = useCallback(() => {
-    refetch();
-  }, [refetch]);
+    console.log('🔄 Audio upload completed - refreshing table data');
+    
+    // Force comprehensive query invalidation and refetch immediately
+    if (selectedProject?.id) {
+      console.log('📋 Invalidating all media file queries for project:', selectedProject.id);
+      
+      // Invalidate all related queries
+      queryClient.invalidateQueries({
+        queryKey: ['media_files_with_verse_info', selectedProject.id]
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['media_files', selectedProject.id]
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['media_files']
+      });
+      
+      // Force immediate refetch to show updates
+      queryClient.refetchQueries({
+        queryKey: ['media_files_with_verse_info', selectedProject.id]
+      });
+      
+      // Also trigger a local refetch as backup
+      refetch();
+    } else {
+      // Fallback if no project ID
+      refetch();
+    }
+  }, [refetch, selectedProject?.id, queryClient]);
 
   // Selection handlers that match component expectations
   const handleSelectAll = useCallback((checked: boolean) => {
     if (checked) {
-      bulkOps.selectAll(filteredAndSortedFiles);
+      bulkOps.selectAll(filteredAndSortedFiles.paginated);
     } else {
       bulkOps.clearSelection();
     }
-  }, [filteredAndSortedFiles, bulkOps]);
+  }, [filteredAndSortedFiles.paginated, bulkOps]);
 
   const handleRowSelect = useCallback((id: string, checked: boolean) => {
     bulkOps.selectItem(id, checked);
@@ -409,7 +479,7 @@ export function useAudioFileManagement(projectId: string | null) {
   const handleBulkDownload = useCallback(async () => {
     if (bulkOps.selectedItems.size === 0) return;
     
-    const filesToDownload = filteredAndSortedFiles.filter(file => 
+    const filesToDownload = filteredAndSortedFiles.all.filter(file => 
       bulkOps.selectedItems.has(file.id)
     );
     
@@ -421,24 +491,9 @@ export function useAudioFileManagement(projectId: string | null) {
         console.error(`Failed to download ${file.filename}:`, error);
       }
     }
-  }, [bulkOps, filteredAndSortedFiles, downloadFile]);
+  }, [bulkOps, filteredAndSortedFiles.all, downloadFile]);
 
-  const handleBulkDelete = useCallback(async () => {
-    if (bulkOps.selectedItems.size === 0) return;
-    
-    if (!confirm(`Are you sure you want to delete ${bulkOps.selectedItems.size} files? This action can be undone.`)) {
-      return;
-    }
-    
-    try {
-      await softDeleteFiles.mutateAsync({
-        fileIds: Array.from(bulkOps.selectedItems)
-      });
-      bulkOps.clearSelection();
-    } catch (error) {
-      console.error('Error deleting files:', error);
-    }
-  }, [bulkOps, softDeleteFiles]);
+
 
   // Form change handler for edit modal
   const handleEditFormChange = useCallback((field: string, value: string) => {
@@ -468,9 +523,9 @@ export function useAudioFileManagement(projectId: string | null) {
   };
 
   // Computed properties for selection state
-  const allCurrentPageSelected = filteredAndSortedFiles.length > 0 && 
-    filteredAndSortedFiles.every(file => bulkOps.selectedItems.has(file.id));
-  const someCurrentPageSelected = filteredAndSortedFiles.some(file => bulkOps.selectedItems.has(file.id));
+  const allCurrentPageSelected = filteredAndSortedFiles.paginated.length > 0 && 
+    filteredAndSortedFiles.paginated.every(file => bulkOps.selectedItems.has(file.id));
+  const someCurrentPageSelected = filteredAndSortedFiles.paginated.some(file => bulkOps.selectedItems.has(file.id));
   const selectedItems = Array.from(bulkOps.selectedItems);
 
   return {
@@ -481,16 +536,20 @@ export function useAudioFileManagement(projectId: string | null) {
     ...modalState,
     editForm: enhancedEditForm,
     audioVersionForm: enhancedAudioVersionForm,
-    currentAudioFile,
-    audioUrl,
     
     // Data
-    mediaFiles: filteredAndSortedFiles,
+    mediaFiles: filteredAndSortedFiles.paginated,
     audioVersions: audioVersions || [],
     bibleVersions: bibleVersions || [],
     books: books || [],
     chapters: chapters || [],
     chapterVerses: chapterVerses || [],
+    
+    // Pagination data
+    currentPage: tableState.currentPage,
+    itemsPerPage: tableState.itemsPerPage,
+    totalItems: filteredAndSortedFiles.totalCount,
+    totalPages: Math.ceil(filteredAndSortedFiles.totalCount / tableState.itemsPerPage),
     
     // Loading states
     isLoading: mediaFilesLoading || audioVersionsLoading || booksLoading || chaptersLoading,
@@ -499,6 +558,12 @@ export function useAudioFileManagement(projectId: string | null) {
     // Download state
     downloadState,
     clearDownloadError: clearError,
+    
+    // Audio loading state
+    loadingAudioId,
+    
+    // Verse marking state
+    verseMarking,
     
     // Selection state that matches component expectations
     selectedItems,
@@ -517,15 +582,18 @@ export function useAudioFileManagement(projectId: string | null) {
     handleCreateAudioVersion,
     handlePlay,
     handleDownload,
-    handleDelete,
+    handleVerseMarking,
     handleUploadComplete,
     executeBulkOperation,
     handleBulkPublishStatusChange,
     handleBulkDownload,
-    handleBulkDelete,
     clearSelection: bulkOps.clearSelection,
     refetch,
     refetchAudioVersions,
+    
+    // Pagination actions
+    handlePageChange: tableState.handlePageChange,
+    handlePageSizeChange: tableState.handlePageSizeChange,
     
     // Mutations
     updateMediaFile,

@@ -4,7 +4,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
   DialogFooter,
   DialogClose,
   FileUpload,
@@ -24,9 +23,11 @@ import {
 } from '../../../shared/hooks/query/audio-versions';
 import { useBibleVersions } from '../../../shared/hooks/query/bible-versions';
 import { AudioFileProcessor, type ProcessedAudioFile } from '../../../shared/services/audioFileProcessor';
-import { BulkUploadManager, createBulkUploadFiles } from '../../../shared/services/bulkUploadService';
+import { createBulkUploadFiles } from '../../../shared/services/bulkUploadService';
+import { useUploadStore, useUploadWarning } from '../../../shared/stores/upload';
 import { supabase } from '../../../shared/services/supabase';
 import { PlusIcon } from '@heroicons/react/24/outline';
+import { useQuery } from '@tanstack/react-query';
 
 // Audio file types supported
 const SUPPORTED_AUDIO_TYPES = [
@@ -57,10 +58,14 @@ export function AudioUploadModal({
   const { user, dbUser } = useAuth();
   const [audioFiles, setAudioFiles] = useState<ProcessedAudioFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
   
+  // Global upload state
+  const { startBulkUpload, isUploading } = useUploadStore();
+  useUploadWarning(); // Enable beforeunload warning when uploads are active
+  
   // Audio version selection state
+  const [selectedAudioVersionId, setSelectedAudioVersionId] = useState<string>('');
   const [showCreateAudioVersion, setShowCreateAudioVersion] = useState(false);
   const [selectedBibleVersion, setSelectedBibleVersion] = useState<string>('');
   const [newAudioVersionName, setNewAudioVersionName] = useState('');
@@ -69,13 +74,42 @@ export function AudioUploadModal({
   const { toast } = useToast();
   const audioProcessor = useRef(new AudioFileProcessor()).current;
   
+  // Use the upload store for persistent progress tracking
+  const { startBulkUpload: startBulkUploadFromStore } = useUploadStore();
+  
   // Data fetching
   const { data: audioVersions, refetch: refetchAudioVersions } = useAudioVersionsByProject(selectedProject?.id || '');
   const { data: bibleVersions } = useBibleVersions();
   const createAudioVersionMutation = useCreateAudioVersion();
 
+  // Get the default bible version for full chapter resolution
+  const { data: defaultBibleVersionId } = useQuery({
+    queryKey: ['default-bible-version-modal'],
+    queryFn: async () => {
+      const { data: bibleVersions, error } = await supabase
+        .from('bible_versions')
+        .select('id, name')
+        .order('name')
+        .limit(1);
+
+      if (error) {
+        console.error('Error fetching bible versions:', error);
+        return null;
+      }
+
+      return bibleVersions?.[0]?.id || null;
+    },
+    enabled: !!selectedProject?.id,
+  });
+
   // Check if we need to show audio version creation
   const needsAudioVersion = !audioVersions || audioVersions.length === 0;
+
+  // Auto-select first audio version when available
+  const selectedAudioVersion = audioVersions?.find(v => v.id === selectedAudioVersionId) || audioVersions?.[0];
+  if (audioVersions && audioVersions.length > 0 && !selectedAudioVersionId && selectedAudioVersion) {
+    setSelectedAudioVersionId(selectedAudioVersion.id);
+  }
 
   // Handle file drop/selection
   const handleFilesChange = useCallback(async (files: File[]) => {
@@ -91,7 +125,7 @@ export function AudioUploadModal({
     setIsProcessing(true);
     
     try {
-      const processedFiles = await audioProcessor.processFiles(files);
+      const processedFiles = await audioProcessor.processFiles(files, defaultBibleVersionId || undefined);
       setAudioFiles(prev => [...prev, ...processedFiles]);
       
       const validFiles = processedFiles.filter(f => f.isValid);
@@ -122,7 +156,7 @@ export function AudioUploadModal({
     } finally {
       setIsProcessing(false);
     }
-  }, [selectedProject, audioProcessor, toast]);
+  }, [selectedProject, audioProcessor, toast, defaultBibleVersionId]);
 
   // Handle file updates
   const updateFile = useCallback((fileId: string, updates: Partial<ProcessedAudioFile>) => {
@@ -175,7 +209,7 @@ export function AudioUploadModal({
         return;
       }
 
-      await createAudioVersionMutation.mutateAsync({
+      const newVersion = await createAudioVersionMutation.mutateAsync({
         name: newAudioVersionName.trim(),
         language_entity_id: targetLanguageEntityId,
         bible_version_id: selectedBibleVersion,
@@ -194,6 +228,12 @@ export function AudioUploadModal({
       setSelectedBibleVersion('');
       setShowCreateAudioVersion(false);
       await refetchAudioVersions();
+      
+      // Auto-select the newly created version
+      if (newVersion) {
+        setSelectedAudioVersionId(newVersion.id);
+      }
+      
       setIsCreatingAudioVersion(false);
     } catch (error: unknown) {
       console.error('Error creating audio version:', error);
@@ -231,13 +271,20 @@ export function AudioUploadModal({
       return;
     }
 
-    // Check if we have audio versions
-    const audioVersionId = audioVersions?.[0]?.id;
+    // Use the selected audio version
+    const audioVersionId = selectedAudioVersionId;
+    
+    console.log('🎵 Audio version check:', { 
+      audioVersionId, 
+      selectedAudioVersionId,
+      hasAudioVersion: !!audioVersionId
+    });
     
     if (!audioVersionId) {
+      console.error('❌ No audio version selected for upload');
       toast({
-        title: 'No audio version available',
-        description: 'Please create an audio version first before uploading files',
+        title: 'No audio version selected',
+        description: 'Please select an audio version before uploading files',
         variant: 'error'
       });
       return;
@@ -260,8 +307,6 @@ export function AudioUploadModal({
       return;
     }
 
-    setIsUploading(true);
-
     try {
       // Get auth token
       const { data: { session } } = await supabase.auth.getSession();
@@ -270,7 +315,13 @@ export function AudioUploadModal({
       }
 
       // Validate target language entity ID exists
+      console.log('🎯 Project validation:', {
+        selectedProject,
+        targetLanguageEntityId: selectedProject.target_language_entity_id
+      });
+      
       if (!selectedProject.target_language_entity_id) {
+        console.error('❌ Project target language entity ID is missing');
         toast({
           title: 'Upload Error',
           description: 'Project target language is not configured. Please contact an administrator.',
@@ -282,31 +333,49 @@ export function AudioUploadModal({
       // Create bulk upload files with audio version ID
       const bulkUploadFiles = createBulkUploadFiles(
         validFiles,
-        selectedProject.id,
         selectedProject.target_language_entity_id,
         audioVersionId // Add the audio version ID
       );
 
-      // Create bulk upload manager (without progress callback since modal will close)
-      const uploadManager = new BulkUploadManager();
-
-      // Start bulk upload
-      const result = await uploadManager.startBulkUpload(bulkUploadFiles, session.access_token);
+      // Close modal immediately BEFORE starting upload
+      handleClose();
 
       // Show success message
       toast({
-        title: 'Upload started',
-        description: `Started uploading ${validFiles.length} files. You can view progress in the Audio Files page.`,
+        title: 'Upload started successfully!',
+        description: `Starting upload of ${validFiles.length} files. You can view progress in the Audio Files page.`,
         variant: 'success'
       });
 
-      // Close modal immediately after initiating upload
-      handleClose();
+      // Clear the audio files from the modal
+      setAudioFiles([]);
+      setIsProcessing(false);
 
-      // Trigger refresh of audio files page
+      // Trigger immediate refresh to show new records
       onUploadComplete?.();
 
-      console.log('✅ Bulk upload initiated successfully:', result);
+      // Start bulk upload with new backend - progress tracking happens in store
+      startBulkUploadFromStore(bulkUploadFiles, session.access_token).then((response) => {
+        console.log('✅ Bulk upload started successfully:', response);
+        
+        // Set up periodic table refresh to show progress updates
+        const refreshInterval = setInterval(() => {
+          onUploadComplete?.();
+        }, 3000); // Refresh table every 3 seconds to show status changes
+        
+        // Clean up interval after reasonable time (5 minutes max)
+        setTimeout(() => {
+          clearInterval(refreshInterval);
+          console.log('🧹 Stopped periodic table refresh');
+        }, 5 * 60 * 1000);
+      }).catch((error) => {
+        console.error('❌ Background upload failed:', error);
+        toast({
+          title: 'Upload failed',
+          description: error instanceof Error ? error.message : 'Upload process failed',
+          variant: 'error'
+        });
+      });
 
     } catch (error) {
       console.error('❌ Bulk upload failed:', error);
@@ -315,30 +384,62 @@ export function AudioUploadModal({
         description: error instanceof Error ? error.message : 'Failed to start upload',
         variant: 'error'
       });
-    } finally {
-      setIsUploading(false);
     }
-  }, [selectedProject, audioVersions, audioFiles, toast, onUploadComplete, handleClose]);
+  }, [selectedProject, selectedAudioVersionId, audioFiles, toast, onUploadComplete, handleClose, startBulkUpload]);
 
   const hasFiles = audioFiles.length > 0;
   const validFiles = audioFiles.filter(f => f.isValid);
   const uploadableFiles = validFiles.filter(f => 
-    f.selectedChapterId && f.selectedStartVerseId && f.selectedEndVerseId
+    f.selectedChapterId && 
+    f.selectedStartVerseId && 
+    f.selectedEndVerseId
   );
-  const canUpload = uploadableFiles.length > 0 && !isUploading && !isProcessing;
+
+  // Calculate statistics for display
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="6xl" className="max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle className="flex items-center space-x-2">
-            <PlusIcon className="h-6 w-6" />
-            <span>Upload Audio Files</span>
-          </DialogTitle>
-          <DialogDescription>
-            Upload audio files with automatic verse detection and book/chapter selection
-          </DialogDescription>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="flex items-center space-x-2">
+              <PlusIcon className="h-6 w-6" />
+              <span>Upload Audio Files</span>
+            </DialogTitle>
+            
+            {/* Audio Version Selector in Header - Right Side */}
+            {!needsAudioVersion && !showCreateAudioVersion && (
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Using audio version:
+                  </span>
+                  <Select 
+                    value={selectedAudioVersionId} 
+                    onValueChange={setSelectedAudioVersionId}
+                  >
+                    {audioVersions?.map((version) => (
+                      <SelectItem key={version.id} value={version.id}>
+                        {version.name}
+                      </SelectItem>
+                    ))}
+                  </Select>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowCreateAudioVersion(true)}
+                  className="flex items-center space-x-1"
+                >
+                  <PlusIcon className="h-4 w-4" />
+                  <span>Create New</span>
+                </Button>
+              </div>
+            )}
+          </div>
         </DialogHeader>
+
+
 
         <div className="flex-1 overflow-y-auto space-y-6">
           {/* Check for user authentication */}
@@ -439,28 +540,8 @@ export function AudioUploadModal({
                 </div>
               )}
 
-              {/* Show current audio version */}
-              {!needsAudioVersion && !showCreateAudioVersion && !hasFiles && (
-                <div className="flex justify-between items-center p-4 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
-                  <div>
-                    <p className="text-sm text-gray-900 dark:text-gray-100">
-                      Using audio version: <span className="font-medium">{audioVersions?.[0]?.name}</span>
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowCreateAudioVersion(true)}
-                    className="flex items-center space-x-1"
-                  >
-                    <PlusIcon className="h-4 w-4" />
-                    <span>Create New</span>
-                  </Button>
-                </div>
-              )}
-
               {/* Audio Version Creation Form (when user clicks "Create New") */}
-              {showCreateAudioVersion && !hasFiles && (
+              {showCreateAudioVersion && (
                 <div className="space-y-4">
                   <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-md p-4">
                     <div className="flex items-center justify-between mb-4">
@@ -550,11 +631,11 @@ export function AudioUploadModal({
                 </div>
               )}
 
-              {/* File List */}
+              {/* File List - Remove max-height and internal scrolling */}
               {hasFiles && (
                 <div className="space-y-4">
                   <h3 className="text-lg font-medium text-neutral-900 dark:text-neutral-100">Audio Files</h3>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                  <div className="space-y-3">
                     {audioFiles.map((file) => (
                       <AudioFileRow
                         key={file.id}
@@ -579,14 +660,8 @@ export function AudioUploadModal({
                 <div className="text-sm text-neutral-600 dark:text-neutral-400 space-y-2 p-4 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
                   <h4 className="font-medium text-neutral-900 dark:text-neutral-100">Instructions:</h4>
                   <ul className="list-disc list-inside space-y-1">
-                    <li><strong>Filename Format:</strong> Please name your files as: <code className="bg-neutral-200 dark:bg-neutral-700 px-1 rounded text-neutral-900 dark:text-neutral-100">Language_BookName_ChapterXXX_VXXX_XXX.mp3</code></li>
-                    <li><strong>Example:</strong> <code className="bg-neutral-200 dark:bg-neutral-700 px-1 rounded text-neutral-900 dark:text-neutral-100">Bajhangi_2 Kings_Chapter001_V001_018.mp3</code> (2 Kings chapter 1, verses 1-18)</li>
-                    <li><strong>Example:</strong> <code className="bg-neutral-200 dark:bg-neutral-700 px-1 rounded text-neutral-900 dark:text-neutral-100">Bajhangi_Psalms_Chapter089_V027_052.mp3</code> (Psalms chapter 89, verses 27-52)</li>
-                    <li>Files are automatically processed to detect book, chapter, and verses from filenames</li>
-                    <li>Select book, chapter, and verse range for each file before uploading</li>
-                    <li>Only one audio file can play at a time</li>
+                    <li>Filename format: <code className="bg-neutral-200 dark:bg-neutral-700 px-1 rounded text-neutral-900 dark:text-neutral-100">Language_BookName_ChapterXXX_VXXX_XXX.mp3</code>Eg: <code className="bg-neutral-200 dark:bg-neutral-700 px-1 rounded text-neutral-900 dark:text-neutral-100">Bajhangi_Psalms_Chapter089_V027_052.mp3</code> (Psalms chapter 89, verse 27-52)</li>
                     <li>Maximum file size: 500MB per file, up to 50 files per batch</li>
-                    <li><strong>Background Upload:</strong> After clicking upload, this modal will close and uploads will continue in the background. Check the Audio Files page for progress.</li>
                   </ul>
                 </div>
               )}
@@ -611,16 +686,17 @@ export function AudioUploadModal({
           </DialogClose>
           <Button 
             onClick={handleUpload}
-            disabled={!canUpload}
-            className="flex items-center space-x-2"
+            disabled={!uploadableFiles.length || isUploading || !selectedAudioVersionId}
+            className="min-w-32"
           >
-            {isUploading && <LoadingSpinner className="h-4 w-4" />}
-            <span>
-              {isUploading 
-                ? 'Starting Upload...' 
-                : `Start Upload (${uploadableFiles.length} Files)`
-              }
-            </span>
+            {isUploading ? (
+              <>
+                <LoadingSpinner size="sm" className="mr-2" />
+                Starting Upload...
+              </>
+            ) : (
+              `Upload ${uploadableFiles.length} File${uploadableFiles.length !== 1 ? 's' : ''}`
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

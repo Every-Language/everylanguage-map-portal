@@ -5,6 +5,7 @@ import { ProjectProvider } from './features/dashboard';
 import { LoginPage, RegisterPage, ForgotPasswordPage, UnauthorizedPage } from './features/auth/pages';
 import { DashboardPage } from './app/pages/DashboardPage';
 import { AppLayout } from './shared/components/Layout';
+import { CornerAudioPlayer } from './shared/components/CornerAudioPlayer';
 import { ThemeProvider } from './shared/theme';
 import { ToastManager } from './shared/design-system/hooks/useToast';
 import { LoadingSpinner } from './shared/design-system';
@@ -40,6 +41,7 @@ function App() {
         <AuthProvider>
           <ProjectProvider>
             <Router>
+              <CornerAudioPlayer />
               <Routes>
                 {/* Public routes */}
                 <Route path="/login" element={<LoginPage />} />

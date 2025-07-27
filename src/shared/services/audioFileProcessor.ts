@@ -1,4 +1,4 @@
-import { parseFilename, type ParsedFilename } from './filenameParser';
+import { parseFilename, resolveFullChapterEndVerse, type ParsedFilename } from './filenameParser';
 
 // Simplified metadata interface without FFmpeg dependency
 export interface AudioMetadata {
@@ -37,11 +37,20 @@ export interface ProcessedAudioFile {
 }
 
 export class AudioFileProcessor {
-  async processFile(file: File): Promise<ProcessedAudioFile> {
+  async processFile(file: File, bibleVersionId?: string): Promise<ProcessedAudioFile> {
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     // Parse filename
-    const filenameParseResult = parseFilename(file.name);
+    let filenameParseResult = parseFilename(file.name);
+    
+    // Resolve full chapter end verses if needed and we have a bible version
+    if (filenameParseResult.isFullChapter && bibleVersionId) {
+      try {
+        filenameParseResult = await resolveFullChapterEndVerse(filenameParseResult, bibleVersionId);
+      } catch (error) {
+        console.warn('Failed to resolve full chapter end verse for', file.name, error);
+      }
+    }
     
     // Extract basic metadata (duration only)
     const audioMetadata = await this.extractBasicMetadata(file);
@@ -162,11 +171,11 @@ export class AudioFileProcessor {
     return errors;
   }
 
-  async processFiles(files: File[]): Promise<ProcessedAudioFile[]> {
+  async processFiles(files: File[], bibleVersionId?: string): Promise<ProcessedAudioFile[]> {
     // Process files in parallel for better performance
     const promises = files.map(async (file) => {
       try {
-        return await this.processFile(file);
+        return await this.processFile(file, bibleVersionId);
       } catch (error) {
         console.error('Failed to process file:', file.name, error);
         

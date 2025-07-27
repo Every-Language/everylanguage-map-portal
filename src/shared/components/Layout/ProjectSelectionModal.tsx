@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, Clock } from 'lucide-react';
+import { Search, Clock, Plus } from 'lucide-react';
 import { useProjects } from '../../hooks/query/projects';
 import { useLanguageEntities } from '../../hooks/query/language-entities';
 import { 
@@ -15,6 +15,7 @@ import { Card } from '../../design-system/components/Card';
 import { LoadingSpinner } from '../../design-system/components/LoadingSpinner';
 import { Alert, AlertDescription } from '../../design-system/components/Alert';
 import { formatDistanceToNow } from 'date-fns';
+import { ProjectCreationForm } from '../../../features/projects/components/ProjectCreationForm';
 import type { Project } from '../../stores/types';
 
 interface ProjectWithMetadata extends Project {
@@ -39,11 +40,12 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [recentProjects, setRecentProjects] = useState<string[]>([]);
+  const [currentlySelected, setCurrentlySelected] = useState<Project | null>(selectedProject);
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   // Fetch projects and language entities
   const { data: projects = [], isLoading, error } = useProjects();
   const { data: languageEntities = [] } = useLanguageEntities();
-
 
   // Load recent projects from localStorage
   useEffect(() => {
@@ -70,13 +72,43 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
     return dateString ? new Date(dateString) : new Date();
   }, []);
 
-  // Handle project selection
-  const handleProjectSelect = useCallback((project: Project) => {
-    onProjectSelect(project);
-    updateRecentProjects(project.id);
+  // Handle project card click (selection)
+  const handleProjectClick = useCallback((project: Project) => {
+    setCurrentlySelected(project);
+  }, []);
+
+  // Handle final selection confirmation
+  const handleConfirmSelection = useCallback(() => {
+    if (currentlySelected) {
+      onProjectSelect(currentlySelected);
+      updateRecentProjects(currentlySelected.id);
+      onClose();
+      setSearchTerm('');
+      setCurrentlySelected(null);
+    }
+  }, [currentlySelected, onProjectSelect, updateRecentProjects, onClose]);
+
+  // Handle create new project
+  const handleCreateProject = useCallback(() => {
+    setShowCreateForm(true);
+  }, []);
+
+  // Handle project creation success
+  const handleProjectCreated = useCallback((newProject: Project) => {
+    setShowCreateForm(false);
+    onProjectSelect(newProject);
+    updateRecentProjects(newProject.id);
     onClose();
     setSearchTerm('');
+    setCurrentlySelected(null);
   }, [onProjectSelect, updateRecentProjects, onClose]);
+
+  // Handle close
+  const handleClose = useCallback(() => {
+    setShowCreateForm(false);
+    setCurrentlySelected(selectedProject);
+    onClose();
+  }, [selectedProject, onClose]);
 
   // Create language lookup map
   const languageLookup = useMemo(() => {
@@ -87,54 +119,92 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
     return map;
   }, [languageEntities]);
 
-  // Create projects with metadata
-  const projectsWithMetadata = useMemo<ProjectWithMetadata[]>(() => {
+  // Enhance projects with metadata
+  const projectsWithMetadata = useMemo((): ProjectWithMetadata[] => {
     return projects.map(project => ({
       ...project,
       target_language_name: languageLookup.get(project.target_language_entity_id) || 'Unknown',
       source_language_name: languageLookup.get(project.source_language_entity_id) || 'Unknown',
-      progress: 0, // You can calculate this based on your dashboard data
-      member_count: 1 // Placeholder - adjust based on your data structure
+      progress: 0, // TODO: Calculate actual progress
+      member_count: 1 // TODO: Get actual member count
     }));
   }, [projects, languageLookup]);
 
-  // Filter and sort projects
+  // Filter projects based on search
   const filteredProjects = useMemo(() => {
-    const filtered = projectsWithMetadata.filter(project =>
-      project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.target_language_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.source_language_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (project.description && project.description.toLowerCase().includes(searchTerm.toLowerCase()))
+    if (!searchTerm.trim()) return projectsWithMetadata;
+    
+    const term = searchTerm.toLowerCase();
+    return projectsWithMetadata.filter(project => 
+      project.name.toLowerCase().includes(term) ||
+      project.description?.toLowerCase().includes(term) ||
+      project.target_language_name.toLowerCase().includes(term) ||
+      project.source_language_name.toLowerCase().includes(term)
     );
+  }, [projectsWithMetadata, searchTerm]);
 
-    // Sort by recent projects first, then by updated date
-    return filtered.sort((a, b) => {
-      const aIsRecent = recentProjects.includes(a.id);
-      const bIsRecent = recentProjects.includes(b.id);
-      
-      if (aIsRecent && !bIsRecent) return -1;
-      if (!aIsRecent && bIsRecent) return 1;
-      
-      return getProjectDate(b).getTime() - getProjectDate(a).getTime();
+  // Sort projects: recent first, then by updated date
+  const sortedProjects = useMemo(() => {
+    const recent = filteredProjects.filter(p => recentProjects.includes(p.id));
+    const others = filteredProjects.filter(p => !recentProjects.includes(p.id));
+    
+    // Sort recent projects by their position in recentProjects array
+    recent.sort((a, b) => recentProjects.indexOf(a.id) - recentProjects.indexOf(b.id));
+     
+    // Sort other projects by updated date
+    others.sort((a, b) => {
+      const aDate = getProjectDate(a).getTime();
+      const bDate = getProjectDate(b).getTime();
+      return bDate - aDate;
     });
-  }, [projectsWithMetadata, searchTerm, recentProjects, getProjectDate]);
+     
+    return [...recent, ...others];
+  }, [filteredProjects, recentProjects, getProjectDate]);
 
-  // Clear search when modal closes
-  useEffect(() => {
-    if (!isOpen) {
-      setSearchTerm('');
-    }
-  }, [isOpen]);
+  // If showing create form, render it instead
+  if (showCreateForm) {
+    return (
+      <Dialog open={isOpen} onOpenChange={(open) => !open && setShowCreateForm(false)}>
+        <DialogContent size="4xl" className="max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Create New Project</DialogTitle>
+            <DialogDescription>
+              Set up your Bible translation project with the required information
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-y-auto">
+            <ProjectCreationForm
+              onProjectCreated={handleProjectCreated}
+              onCancel={() => setShowCreateForm(false)}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent size="2xl" className="max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Select Project</DialogTitle>
           <DialogDescription>
-            Choose a Bible translation project to work on
+            Choose a Bible translation project to work on or create a new one
           </DialogDescription>
         </DialogHeader>
+
+        {/* Create New Project Button */}
+        <div className="pb-4 border-b">
+          <Button
+            onClick={handleCreateProject}
+            className="w-full justify-center"
+            variant="outline"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Create New Project
+          </Button>
+        </div>
 
         {/* Search Input */}
         <div className="relative">
@@ -168,17 +238,20 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredProjects.map((project) => {
+              {sortedProjects.map((project) => {
                 const isRecent = recentProjects.includes(project.id);
-                const isSelected = selectedProject?.id === project.id;
+                const isSelected = currentlySelected?.id === project.id;
+                const isCurrentProject = selectedProject?.id === project.id;
                 
                 return (
                   <Card
                     key={project.id}
                     className={`cursor-pointer transition-all hover:shadow-md ${
-                      isSelected ? 'bg-blue-50/50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700' : 'hover:border-neutral-300 dark:hover:border-neutral-600'
+                      isSelected 
+                        ? 'bg-blue-50/50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700 ring-2 ring-blue-500/20' 
+                        : 'hover:border-neutral-300 dark:hover:border-neutral-600'
                     }`}
-                    onClick={() => handleProjectSelect(project)}
+                    onClick={() => handleProjectClick(project)}
                   >
                     <div className="p-4">
                       <div className="flex items-start justify-between">
@@ -193,8 +266,8 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
                                 Recent
                               </div>
                             )}
-                            {isSelected && (
-                              <div className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                            {isCurrentProject && (
+                              <div className="text-xs text-green-600 dark:text-green-400 font-medium">
                                 Current
                               </div>
                             )}
@@ -215,9 +288,6 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
                             </span>
                           </div>
                         </div>
-                        <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold ml-4">
-                          {project.name.charAt(0).toUpperCase()}
-                        </div>
                       </div>
                     </div>
                   </Card>
@@ -227,10 +297,18 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end pt-4 border-t border-neutral-200 dark:border-neutral-700">
-          <Button variant="outline" onClick={onClose}>
+        {/* Action Buttons */}
+        <div className="flex justify-between items-center pt-4 border-t">
+          <Button variant="outline" onClick={handleClose}>
             Cancel
+          </Button>
+          
+          <Button 
+            onClick={handleConfirmSelection}
+            disabled={!currentlySelected}
+            className="min-w-24"
+          >
+            Select
           </Button>
         </div>
       </DialogContent>

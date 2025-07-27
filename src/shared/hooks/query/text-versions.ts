@@ -189,12 +189,32 @@ export function useVerseTextsByVersion(textVersionId: string | null) {
 
 // Hook to fetch verse texts by book and chapter
 export function useVerseTextsByBookChapter(bookId: string | null, chapterId: string | null) {
-  return useFetchCollection('verse_texts', {
-    filters: { 
-      book_id: bookId,
-      chapter_id: chapterId 
+  return useQuery({
+    queryKey: ['verse_texts_by_book_chapter', bookId, chapterId],
+    queryFn: async () => {
+      if (!bookId || !chapterId) return []
+      
+      const { data, error } = await supabase
+        .from('verse_texts')
+        .select(`
+          *,
+          text_versions (
+            id,
+            name,
+            language_entity_id
+          ),
+          verses!inner (
+            id,
+            verse_number,
+            chapter_id
+          )
+        `)
+        .eq('verses.chapter_id', chapterId)
+        .order('verses.verse_number', { ascending: true })
+      
+      if (error) throw error
+      return data
     },
-    orderBy: { column: 'verse_number', ascending: true },
     enabled: !!bookId && !!chapterId,
   })
 }
@@ -307,6 +327,30 @@ export function useBulkInsertVerseTexts() {
         updated_at: new Date().toISOString()
       }))
 
+      // Step 1: Delete existing records for the verses we're about to insert
+      // This works around the partial unique index issue by ensuring no conflicts
+      const uniqueVerseTextVersionPairs = [...new Set(
+        verseTextsData.map(item => `${item.verse_id}:${item.text_version_id}`)
+      )]
+
+      for (const pair of uniqueVerseTextVersionPairs) {
+        const [verse_id, text_version_id] = pair.split(':')
+        
+        // Delete existing record for this verse + text version combination
+        // RLS policy ensures user can only delete their own records
+        const { error: deleteError } = await supabase
+          .from('verse_texts')
+          .delete()
+          .eq('verse_id', verse_id)
+          .eq('text_version_id', text_version_id)
+        
+        if (deleteError) {
+          console.warn(`Warning: Could not delete existing verse text for ${verse_id}:${text_version_id}:`, deleteError)
+          // Continue anyway - the record might not exist or user might not own it
+        }
+      }
+
+      // Step 2: Insert all the new records
       const { data, error } = await supabase
         .from('verse_texts')
         .insert(insertData)

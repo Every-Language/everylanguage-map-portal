@@ -38,10 +38,10 @@ const ActionButtons: React.FC<{
           e.stopPropagation()
           onUpload()
         }}
-        className="h-6 w-6 p-0 hover:bg-green-100 dark:hover:bg-green-900"
+        className="h-6 w-6 p-0 hover:bg-secondary-100 dark:hover:bg-secondary-900"
         aria-label={`Upload audio for ${variant}`}
       >
-        <Upload className="h-3 w-3 text-green-600 dark:text-green-400" />
+        <Upload className="h-3 w-3 text-secondary-600 dark:text-secondary-400" />
       </Button>
       <Button
         variant="ghost"
@@ -50,10 +50,10 @@ const ActionButtons: React.FC<{
           e.stopPropagation()
           onEdit()
         }}
-        className="h-6 w-6 p-0 hover:bg-blue-100 dark:hover:bg-blue-900"
+        className="h-6 w-6 p-0 hover:bg-primary-100 dark:hover:bg-primary-900"
         aria-label={`Edit ${variant} details`}
       >
-        <Edit3 className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+        <Edit3 className="h-3 w-3 text-primary-600 dark:text-primary-400" />
       </Button>
     </div>
   )

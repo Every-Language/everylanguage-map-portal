@@ -216,7 +216,7 @@ export function DataTable<T extends Record<string, unknown>>({
                             className={cn(
                               'h-3 w-3',
                               sortKey === column.key && sortDirection === 'asc'
-                                ? 'text-blue-600 dark:text-blue-400'
+                                ? 'text-primary-600 dark:text-primary-400'
                                 : 'text-neutral-300 dark:text-neutral-600'
                             )} 
                           />
@@ -224,7 +224,7 @@ export function DataTable<T extends Record<string, unknown>>({
                             className={cn(
                               'h-3 w-3 -mt-1',
                               sortKey === column.key && sortDirection === 'desc'
-                                ? 'text-blue-600 dark:text-blue-400'
+                                ? 'text-primary-600 dark:text-primary-400'
                                 : 'text-neutral-300 dark:text-neutral-600'
                             )} 
                           />

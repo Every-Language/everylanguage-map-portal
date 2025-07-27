@@ -15,6 +15,8 @@ export interface DataTableState {
   sortDirection: 'asc' | 'desc' | null;
   selectedItems: Set<string>;
   searchTerm: string;
+  currentPage: number;
+  itemsPerPage: number;
 }
 
 export interface DataTableActions {
@@ -22,12 +24,16 @@ export interface DataTableActions {
   setSort: (field: string | null, direction?: 'asc' | 'desc' | null) => void;
   setSelectedItems: (items: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
   setSearchTerm: (term: string) => void;
+  setCurrentPage: (page: number) => void;
+  setItemsPerPage: (itemsPerPage: number) => void;
   clearFilters: () => void;
   clearSelection: () => void;
   selectAll: (items: string[]) => void;
   selectItem: (id: string, selected: boolean) => void;
   handleSort: (field: string) => void;
   handleFilterChange: (key: string, value: unknown) => void;
+  handlePageChange: (page: number) => void;
+  handlePageSizeChange: (pageSize: number) => void;
 }
 
 export interface UseDataTableStateOptions {
@@ -37,9 +43,13 @@ export interface UseDataTableStateOptions {
     direction: 'asc' | 'desc';
   };
   initialSearchTerm?: string;
+  initialPage?: number;
+  initialItemsPerPage?: number;
   onFiltersChange?: (filters: DataTableFilters) => void;
   onSortChange?: (sort: DataTableSort) => void;
   onSelectionChange?: (selectedItems: Set<string>) => void;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
 }
 
 export function useDataTableState(
@@ -49,9 +59,13 @@ export function useDataTableState(
     initialFilters = {},
     initialSort,
     initialSearchTerm = '',
+    initialPage = 1,
+    initialItemsPerPage = 25,
     onFiltersChange,
     onSortChange,
     onSelectionChange,
+    onPageChange,
+    onPageSizeChange,
   } = options;
 
   // State
@@ -62,6 +76,8 @@ export function useDataTableState(
   );
   const [selectedItems, setSelectedItemsState] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTermState] = useState<string>(initialSearchTerm);
+  const [currentPage, setCurrentPageState] = useState<number>(initialPage);
+  const [itemsPerPage, setItemsPerPageState] = useState<number>(initialItemsPerPage);
 
   // Actions
   const setFilters = useCallback((
@@ -91,7 +107,21 @@ export function useDataTableState(
 
   const setSearchTerm = useCallback((term: string) => {
     setSearchTermState(term);
+    // Reset to first page when searching
+    setCurrentPageState(1);
   }, []);
+
+  const setCurrentPage = useCallback((page: number) => {
+    setCurrentPageState(page);
+    onPageChange?.(page);
+  }, [onPageChange]);
+
+  const setItemsPerPage = useCallback((pageSize: number) => {
+    setItemsPerPageState(pageSize);
+    // Reset to first page when changing page size
+    setCurrentPageState(1);
+    onPageSizeChange?.(pageSize);
+  }, [onPageSizeChange]);
 
   const clearFilters = useCallback(() => {
     setFilters(initialFilters);
@@ -145,9 +175,18 @@ export function useDataTableState(
       return newFilters;
     });
     
-    // Clear selections when filtering
+    // Clear selections when filtering and reset to first page
     clearSelection();
+    setCurrentPageState(1);
   }, [setFilters, clearSelection]);
+
+  const handlePageChange = useCallback((page: number) => {
+    setCurrentPage(page);
+  }, [setCurrentPage]);
+
+  const handlePageSizeChange = useCallback((pageSize: number) => {
+    setItemsPerPage(pageSize);
+  }, [setItemsPerPage]);
 
   // Computed state
   const state = useMemo(() => ({
@@ -156,7 +195,9 @@ export function useDataTableState(
     sortDirection,
     selectedItems,
     searchTerm,
-  }), [filters, sortField, sortDirection, selectedItems, searchTerm]);
+    currentPage,
+    itemsPerPage,
+  }), [filters, sortField, sortDirection, selectedItems, searchTerm, currentPage, itemsPerPage]);
 
   return {
     ...state,
@@ -164,11 +205,15 @@ export function useDataTableState(
     setSort,
     setSelectedItems,
     setSearchTerm,
+    setCurrentPage,
+    setItemsPerPage,
     clearFilters,
     clearSelection,
     selectAll,
     selectItem,
     handleSort,
     handleFilterChange,
+    handlePageChange,
+    handlePageSizeChange,
   };
 } 

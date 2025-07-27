@@ -7,10 +7,16 @@ import {
   useVerseTextsByProject,
   useUpdateVerseTextPublishStatus,
   useEditVerseText,
+  useCreateTextVersion,
   type VerseTextWithRelations
 } from '../../../shared/hooks/query/text-versions';
 import { useBooks, useChapters, useVersesByChapter } from '../../../shared/hooks/query/bible-structure';
+import { useBibleVersions } from '../../../shared/hooks/query/bible-versions';
+import { useAuth } from '../../auth/hooks/useAuth';
+import { useSelectedProject } from '../../dashboard/hooks/useSelectedProject';
+import { useToast } from '../../../shared/design-system/hooks/useToast';
 import { useMemo, useCallback } from 'react';
+import type { TextVersionForm } from '../components/BibleTextManager/TextVersionModal';
 
 export interface BibleTextFilters {
   textVersionId: string;
@@ -67,8 +73,26 @@ export function useBibleTextManagement(projectId: string | null) {
     ]
   });
 
+  // Form state for creating text versions
+  const textVersionForm = useFormState<TextVersionForm>({
+    initialData: {
+      name: '',
+      selectedBibleVersion: ''
+    },
+    validationRules: [
+      { field: 'name', required: true, minLength: 1 },
+      { field: 'selectedBibleVersion', required: true }
+    ]
+  });
+
+  // External dependencies
+  const { dbUser } = useAuth();
+  const { selectedProject } = useSelectedProject();
+  const { toast } = useToast();
+
   // Data fetching
-  const { data: textVersions, isLoading: textVersionsLoading } = useTextVersionsByProject(projectId || '');
+  const { data: textVersions, isLoading: textVersionsLoading, refetch: refetchTextVersions } = useTextVersionsByProject(projectId || '');
+  const { data: bibleVersions } = useBibleVersions();
   const { data: books, isLoading: booksLoading } = useBooks();
   const { data: chapters, isLoading: chaptersLoading } = useChapters();
   const { data: chapterVerses } = useVersesByChapter(editForm.data.chapterId || null);
@@ -77,6 +101,7 @@ export function useBibleTextManagement(projectId: string | null) {
   // Mutations
   const updatePublishStatusMutation = useUpdateVerseTextPublishStatus();
   const editVerseTextMutation = useEditVerseText();
+  const createTextVersionMutation = useCreateTextVersion();
 
   // Filter and sort verse texts
   const filteredAndSortedTexts = useMemo(() => {
@@ -236,6 +261,62 @@ export function useBibleTextManagement(projectId: string | null) {
     await bulkOps.performBulkOperation(operationId);
   }, [bulkOps]);
 
+  // Enhanced form state for text version creation
+  const enhancedTextVersionForm = useMemo(() => ({
+    ...textVersionForm,
+    updateField: (field: string, value: string) => {
+      textVersionForm.setFieldValue(field as keyof TextVersionForm, value);
+    }
+  }), [textVersionForm]);
+
+  // Text version creation handler
+  const handleCreateTextVersion = useCallback(async () => {
+    if (!projectId || !enhancedTextVersionForm.validateForm() || !dbUser) {
+      toast({
+        title: 'Missing information',
+        description: 'Please fill in all required fields',
+        variant: 'error'
+      });
+      return;
+    }
+
+    try {
+      if (!selectedProject?.target_language_entity_id) {
+        toast({
+          title: 'Project configuration error',
+          description: 'Project does not have a target language configured',
+          variant: 'error'
+        });
+        return;
+      }
+
+      await createTextVersionMutation.mutateAsync({
+        name: enhancedTextVersionForm.data.name.trim(),
+        language_entity_id: selectedProject.target_language_entity_id,
+        bible_version_id: enhancedTextVersionForm.data.selectedBibleVersion,
+        text_version_source: 'user_submitted',
+        created_by: dbUser.id
+      });
+
+      toast({
+        title: 'Text version created',
+        description: `Successfully created text version "${enhancedTextVersionForm.data.name}"`,
+        variant: 'success'
+      });
+
+      enhancedTextVersionForm.resetForm();
+      modalState.closeModal();
+      await refetchTextVersions();
+    } catch (error: unknown) {
+      console.error('Error creating text version:', error);
+      toast({
+        title: 'Failed to create text version',
+        description: error instanceof Error ? error.message : 'An unknown error occurred',
+        variant: 'error'
+      });
+    }
+  }, [projectId, enhancedTextVersionForm, dbUser, toast, createTextVersionMutation, selectedProject, modalState, refetchTextVersions]);
+
   // Computed properties for selection state
   const allCurrentPageSelected = filteredAndSortedTexts.length > 0 && 
     filteredAndSortedTexts.every(text => bulkOps.selectedItems.has(text.id));
@@ -260,9 +341,11 @@ export function useBibleTextManagement(projectId: string | null) {
     sortDirection: tableState.sortDirection,
     ...modalState,
     editForm: enhancedEditForm,
+    textVersionForm: enhancedTextVersionForm,
     
     // Data
     textVersions: textVersions || [],
+    bibleVersions: bibleVersions || [],
     books: books || [],
     chapters: chapters || [],
     chapterVerses: chapterVerses || [],
@@ -291,6 +374,9 @@ export function useBibleTextManagement(projectId: string | null) {
     
     // Mutations
     updatePublishStatusMutation,
-    editVerseTextMutation
+    editVerseTextMutation,
+    createTextVersionMutation,
+    enhancedTextVersionForm,
+    handleCreateTextVersion
   };
 } 
