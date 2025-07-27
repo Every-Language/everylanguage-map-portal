@@ -66,8 +66,8 @@ export function useImageManagement() {
 
   // Mutations
   const createImageSetMutation = useMutation({
-    mutationFn: ({ name, remotePath }: { name: string; remotePath?: string }) => 
-      imageService.createImageSet(name, remotePath),
+    mutationFn: ({ name }: { name: string }) =>
+      imageService.createImageSet(name),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['image-sets'] });
       setShowCreateSetModal(false);
@@ -157,8 +157,7 @@ export function useImageManagement() {
     if (!createSetForm.name.trim()) return;
     
     createImageSetMutation.mutate({
-      name: createSetForm.name.trim(),
-      remotePath: createSetForm.remotePath.trim() || createSetForm.name.trim()
+      name: createSetForm.name.trim()
     });
   };
 

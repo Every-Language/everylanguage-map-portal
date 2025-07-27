@@ -1,0 +1,96 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # Run tests and linting for all branches
+  test:
+    runs-on: ubuntu-latest
+    name: Test & Lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: npm run lint
+
+      - name: Run type checking
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm run test:run
+
+      - name: Test build
+        run: npm run build
+        env:
+          # Use dummy values for build test
+          VITE_SUPABASE_URL: https://dummy.supabase.co
+          VITE_SUPABASE_ANON_KEY: dummy_key
+
+  # Security scanning
+  security:
+    runs-on: ubuntu-latest
+    name: Security Scan
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run npm audit
+        run: npm audit --audit-level high
+
+  # Build and deployment info
+  build-info:
+    runs-on: ubuntu-latest
+    name: Build Information
+    needs: [test, security]
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+        env:
+          # Use dummy values for build
+          VITE_SUPABASE_URL: https://dummy.supabase.co
+          VITE_SUPABASE_ANON_KEY: dummy_key
+
+      - name: Display build info
+        run: |
+          echo "✅ Build completed successfully"
+          echo "📦 Build size:"
+          du -sh dist/
+          echo "📁 Build contents:"
+          ls -la dist/
+          
+      - name: Deployment status
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "🚀 This will deploy to PRODUCTION (Vercel will handle deployment)"
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "🔧 This will deploy to DEVELOPMENT (Vercel will handle deployment)"
+          else
+            echo "📋 This is a feature branch - Vercel will create a preview deployment"
+          fi 

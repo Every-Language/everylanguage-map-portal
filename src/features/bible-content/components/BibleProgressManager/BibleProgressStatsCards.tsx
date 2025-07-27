@@ -1,10 +1,10 @@
 import React from 'react';
 import { MetricCard } from '../../../dashboard/components/shared/MetricCard';
 import { Progress } from '../../../../shared/design-system';
-import type { BibleProgressStats } from '../../hooks/useBibleProgress';
+import type { ProgressStats } from '../../hooks/useBibleProgress';
 
 interface BibleProgressStatsCardsProps {
-  progressStats?: BibleProgressStats;
+  progressStats?: ProgressStats;
   isLoading: boolean;
 }
 

@@ -118,12 +118,11 @@ export class ImageService {
   /**
    * Create a new image set
    */
-  async createImageSet(name: string, remotePath?: string): Promise<ImageSet> {
+  async createImageSet(name: string): Promise<ImageSet> {
     const { data, error } = await supabase
       .from('image_sets')
       .insert({
-        name,
-        remote_path: remotePath || name
+        name
       })
       .select()
       .single();

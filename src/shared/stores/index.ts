@@ -2,7 +2,6 @@
 export * from './auth';
 export * from './project';
 export * from './ui';
-export * from './upload';
 export * from './audioPlayer';
 export * from './types';
 
@@ -37,20 +36,10 @@ export {
   useBibleVersionById,
 } from './project'
 
-// Upload store
+// Upload store - fixed exports to match actual exports
 export {
   useUploadStore,
-  useUploadBatches,
-  useCurrentBatch,
-  useIsUploading,
-  useGlobalProgress,
-  useUploadError,
-  useUploadActions,
-  useBatchById,
-  useFileById,
-  useActiveBatches,
-  useCompletedBatches,
-  useFailedBatches,
+  useUploadWarning,
 } from './upload'
 
 // UI store

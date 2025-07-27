@@ -116,8 +116,8 @@ export function useCommunityChecking({ projectId }: UseCommunityCheckingProps): 
           break;
         }
         case 'filename': {
-          const aFilename = a.remote_path?.split('/').pop() || a.local_path || '';
-          const bFilename = b.remote_path?.split('/').pop() || b.local_path || '';
+          const aFilename = a.remote_path?.split('/').pop() || '';
+          const bFilename = b.remote_path?.split('/').pop() || '';
           comparison = aFilename.localeCompare(bFilename);
           break;
         }

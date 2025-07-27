@@ -278,7 +278,7 @@ export const CheckingWorkflow: React.FC<CheckingWorkflowProps> = ({
                   </div>
                   
                   <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-2">
-                    {file.remote_path?.split('/').pop() || file.local_path}
+                    {file.remote_path?.split('/').pop() || 'No file path'}
                   </p>
                   
                   <div className="flex items-center gap-4 text-xs text-neutral-500">

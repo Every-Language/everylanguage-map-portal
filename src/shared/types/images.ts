@@ -2,7 +2,7 @@
 export interface ImageSet {
   id: string;
   name: string;
-  remote_path: string;
+  remote_path?: string;
   created_by?: string | null;
   created_at: string | null;
   updated_at: string | null;

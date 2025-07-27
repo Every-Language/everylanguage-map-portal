@@ -29,18 +29,19 @@ export function useAudioUpload() {
   // Handle upload completion with proper cache invalidation
   const handleUploadComplete = useCallback((response: BulkUploadResponse) => {
     if (response.success && response.data) {
-      const { successfulUploads, failedUploads } = response.data;
+      const completedFiles = response.data.mediaRecords.filter(r => r.status === 'completed').length;
+      const failedFiles = response.data.mediaRecords.filter(r => r.status === 'failed').length;
       
-      if (failedUploads > 0) {
+      if (failedFiles > 0) {
         toast({
           title: 'Upload completed with errors',
-          description: `${successfulUploads} files uploaded successfully, ${failedUploads} failed.`,
+          description: `${completedFiles} files uploaded successfully, ${failedFiles} failed.`,
           variant: 'warning'
         });
       } else {
         toast({
           title: 'Upload completed',
-          description: `Successfully uploaded all ${successfulUploads} files.`,
+          description: `Successfully uploaded all ${completedFiles} files.`,
           variant: 'success'
         });
       }
