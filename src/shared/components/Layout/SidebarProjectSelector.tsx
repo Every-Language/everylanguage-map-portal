@@ -1,23 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useSelectedProject } from '../../../features/dashboard/hooks/useSelectedProject';
-import { useLanguageEntities } from '../../../shared/hooks/query/language-entities';
+import { useLanguageEntitiesByIds } from '../../../shared/hooks/query/language-entities';
 import { Button } from '../../design-system/components/Button';
 import { ProjectSelectionModal } from './ProjectSelectionModal';
 import type { Project } from '../../stores/types';
 
 export const SidebarProjectSelector: React.FC = () => {
   const { selectedProject, setSelectedProject } = useSelectedProject();
-  const { data: languageEntities = [] } = useLanguageEntities();
+  
+  // Extract language IDs from selected project
+  const languageIds = useMemo(() => {
+    const ids: string[] = [];
+    if (selectedProject?.source_language_entity_id) ids.push(selectedProject.source_language_entity_id);
+    if (selectedProject?.target_language_entity_id) ids.push(selectedProject.target_language_entity_id);
+    return ids;
+  }, [selectedProject]);
+  
+  const { data: languageEntities = [], isLoading: languagesLoading } = useLanguageEntitiesByIds(languageIds);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Get both source and target language names
-  const targetLanguage = selectedProject 
-    ? languageEntities.find(lang => lang.id === selectedProject.target_language_entity_id)?.name || 'Unknown'
-    : '';
+  // Create language lookup map
+  const languageLookup = useMemo(() => {
+    const map = new Map<string, string>();
+    languageEntities.forEach(entity => {
+      map.set(entity.id, entity.name);
+    });
+    return map;
+  }, [languageEntities]);
+
+  // Get both source and target language names with loading state
+  const targetLanguage = selectedProject && !languagesLoading
+    ? languageLookup.get(selectedProject.target_language_entity_id) || 'Unknown'
+    : languagesLoading ? 'Loading...' : '';
   
-  const sourceLanguage = selectedProject 
-    ? languageEntities.find(lang => lang.id === selectedProject.source_language_entity_id)?.name || 'Unknown'
-    : '';
+  const sourceLanguage = selectedProject && !languagesLoading
+    ? languageLookup.get(selectedProject.source_language_entity_id) || 'Unknown'
+    : languagesLoading ? 'Loading...' : '';
 
   return (
     <>
@@ -35,11 +53,16 @@ export const SidebarProjectSelector: React.FC = () => {
         >
           {selectedProject ? (
             <div className="min-w-0 flex-1">
-              <div className="font-medium text-neutral-900 dark:text-neutral-100 truncate text-sm">
+              <div className="font-medium text-neutral-900 dark:text-neutral-100 text-sm mb-1">
                 {selectedProject.name}
               </div>
-              <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-                {sourceLanguage} → {targetLanguage}
+              <div className="text-xs text-neutral-500 dark:text-neutral-400 space-y-0.5">
+                <div className="break-words">
+                  <span className="font-medium">Source:</span> {sourceLanguage}
+                </div>
+                <div className="break-words">
+                  <span className="font-medium">Target:</span> {targetLanguage}
+                </div>
               </div>
             </div>
           ) : (

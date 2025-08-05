@@ -112,6 +112,8 @@ export const AudioFileManager: React.FC<AudioFileManagerProps> = ({
       <AudioUploadModal
         open={audioFileState.isModalOpen('upload')}
         onOpenChange={(open) => open ? audioFileState.openModal('upload') : audioFileState.closeModal()}
+        onUploadComplete={audioFileState.handleUploadComplete}
+        selectedAudioVersionId={audioFileState.filters.audioVersionId !== 'all' ? audioFileState.filters.audioVersionId : ''}
       />
 
       <AudioFileEditModal

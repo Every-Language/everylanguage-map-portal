@@ -55,7 +55,7 @@ export interface AudioVersionForm extends Record<string, unknown> {
 }
 
 type PublishStatus = 'pending' | 'published' | 'archived';
-type SortField = 'filename' | 'publish_status' | 'upload_status' | 'created_at' | 'verse_reference';
+type SortField = 'created_at' | 'verse_reference';
 
 export function useAudioFileManagement(projectId: string | null) {
   // Core data table state management
@@ -359,7 +359,7 @@ export function useAudioFileManagement(projectId: string | null) {
         variant: 'error'
       });
     }
-  }, [projectId, enhancedAudioVersionForm, dbUser, toast, createAudioVersionMutation, modalState, refetchAudioVersions]);
+  }, [projectId, enhancedAudioVersionForm, dbUser, toast, createAudioVersionMutation, modalState, refetchAudioVersions, selectedProject?.target_language_entity_id]);
 
   const handlePlay = useCallback(async (file: MediaFileWithVerseInfo) => {
     if (!file.remote_path) {
@@ -376,7 +376,12 @@ export function useAudioFileManagement(projectId: string | null) {
       const result = await service.getDownloadUrls([file.remote_path]);
       
       if (result.success && result.urls[file.remote_path]) {
-        playFile(file, result.urls[file.remote_path]);
+        // Convert the file to the audio player's expected type
+        const audioFile = {
+          ...file,
+          check_status: file.check_status || 'pending'
+        } as import('../../../shared/stores/audioPlayer').MediaFileWithVerseInfo;
+        playFile(audioFile, result.urls[file.remote_path]);
       } else {
         console.error('Failed to get streaming URL');
       }
@@ -435,8 +440,8 @@ export function useAudioFileManagement(projectId: string | null) {
     }
   }, [filteredAndSortedFiles.paginated, bulkOps]);
 
-  const handleRowSelect = useCallback((id: string, checked: boolean) => {
-    bulkOps.selectItem(id, checked);
+  const handleRowSelect = useCallback((id: string, checked?: boolean) => {
+    bulkOps.selectItem(id, checked ?? false);
   }, [bulkOps]);
 
   // Bulk operations handler

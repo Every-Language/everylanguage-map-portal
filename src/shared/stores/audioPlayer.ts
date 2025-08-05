@@ -1,23 +1,55 @@
 import { create } from 'zustand';
-import type { MediaFileWithVerseInfo } from '../hooks/query/media-files';
+
+export interface MediaFileWithVerseInfo {
+  id: string;
+  filename: string;
+  verse_reference: string;
+  book_id: string;
+  chapter_id: string;
+  start_verse_id: string;
+  end_verse_id: string;
+  check_status: 'pending' | 'approved' | 'rejected' | 'requires_review';
+  publish_status: 'pending' | 'published' | 'archived';
+  audio_version_id: string;
+  project_id?: string;
+  remote_path?: string;
+  duration_seconds?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface VerseTimestamp {
+  id: string;
+  verse_id: string;
+  verse_number: number;
+  start_time_seconds: number;
+  duration_seconds: number;
+}
 
 export interface AudioPlayerState {
-  // Current playback
+  // File and playback state
   currentFile: MediaFileWithVerseInfo | null;
   audioUrl: string | null;
   isVisible: boolean;
-  
-  // Playback state
   isPlaying: boolean;
   currentTime: number;
   duration: number;
   volume: number;
   isMuted: boolean;
-  
-  // Loading and error states
   isLoading: boolean;
   error: string | null;
-  
+  playbackSpeed: number;
+
+  // Layout state
+  playerWidth: number;
+  isResizing: boolean;
+  minWidth: number;
+  maxWidth: number;
+
+  // Verse tracking
+  currentVerse: VerseTimestamp | null;
+  verseTimestamps: VerseTimestamp[];
+
   // Actions
   playFile: (file: MediaFileWithVerseInfo, audioUrl: string) => void;
   pausePlayback: () => void;
@@ -30,8 +62,16 @@ export interface AudioPlayerState {
   setMuted: (muted: boolean) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  setPlaybackSpeed: (speed: number) => void;
+  setPlayerWidth: (width: number) => void;
+  setResizing: (resizing: boolean) => void;
+  setCurrentVerse: (verse: VerseTimestamp | null) => void;
+  setVerseTimestamps: (timestamps: VerseTimestamp[]) => void;
+  jumpToVerse: (timestamp: number) => void;
   skipForward: () => void;
   skipBackward: () => void;
+  skipToNextVerse: () => void;
+  skipToPreviousVerse: () => void;
 }
 
 export const useAudioPlayerStore = create<AudioPlayerState>((set, get) => ({
@@ -46,6 +86,17 @@ export const useAudioPlayerStore = create<AudioPlayerState>((set, get) => ({
   isMuted: false,
   isLoading: false,
   error: null,
+  playbackSpeed: 1,
+
+  // Layout state
+  playerWidth: 400,
+  isResizing: false,
+  minWidth: 320,
+  maxWidth: 800,
+
+  // Verse tracking
+  currentVerse: null,
+  verseTimestamps: [],
 
   // Actions
   playFile: (file: MediaFileWithVerseInfo, audioUrl: string) => {
@@ -58,6 +109,8 @@ export const useAudioPlayerStore = create<AudioPlayerState>((set, get) => ({
       duration: 0,
       isLoading: true,
       error: null, // Clear any previous errors
+      currentVerse: null,
+      verseTimestamps: [], // Will be loaded separately
     });
   },
 
@@ -86,6 +139,8 @@ export const useAudioPlayerStore = create<AudioPlayerState>((set, get) => ({
       duration: 0,
       isLoading: false,
       error: null,
+      currentVerse: null,
+      verseTimestamps: [],
     });
   },
 
@@ -113,6 +168,32 @@ export const useAudioPlayerStore = create<AudioPlayerState>((set, get) => ({
     set({ error, isLoading: false });
   },
 
+  setPlaybackSpeed: (speed: number) => {
+    set({ playbackSpeed: speed });
+  },
+
+  setPlayerWidth: (width: number) => {
+    const { minWidth, maxWidth } = get();
+    const clampedWidth = Math.min(Math.max(width, minWidth), maxWidth);
+    set({ playerWidth: clampedWidth });
+  },
+
+  setResizing: (resizing: boolean) => {
+    set({ isResizing: resizing });
+  },
+
+  setCurrentVerse: (verse: VerseTimestamp | null) => {
+    set({ currentVerse: verse });
+  },
+
+  setVerseTimestamps: (timestamps: VerseTimestamp[]) => {
+    set({ verseTimestamps: timestamps });
+  },
+
+  jumpToVerse: (timestamp: number) => {
+    set({ currentTime: timestamp });
+  },
+
   skipForward: () => {
     const { currentTime, duration } = get();
     const newTime = Math.min(currentTime + 10, duration);
@@ -123,5 +204,28 @@ export const useAudioPlayerStore = create<AudioPlayerState>((set, get) => ({
     const { currentTime } = get();
     const newTime = Math.max(currentTime - 10, 0);
     set({ currentTime: newTime });
+  },
+
+  skipToNextVerse: () => {
+    const { currentTime, verseTimestamps } = get();
+    const nextVerse = verseTimestamps.find(v => v.start_time_seconds > currentTime);
+    if (nextVerse) {
+      set({ currentTime: nextVerse.start_time_seconds });
+    }
+  },
+
+  skipToPreviousVerse: () => {
+    const { currentTime, verseTimestamps } = get();
+    // Find the verse before the current time, but not the current verse
+    const previousVerses = verseTimestamps
+      .filter(v => v.start_time_seconds < currentTime - 1) // -1 second buffer
+      .sort((a, b) => b.start_time_seconds - a.start_time_seconds);
+    
+    if (previousVerses.length > 0) {
+      set({ currentTime: previousVerses[0].start_time_seconds });
+    } else {
+      // Go to beginning if no previous verse
+      set({ currentTime: 0 });
+    }
   },
 })); 

@@ -1,4 +1,4 @@
-import React from 'react';
+// Remove unused React import
 import { Progress } from '@/shared/design-system/components/Progress';
 import { Card } from '@/shared/design-system/components/Card';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';

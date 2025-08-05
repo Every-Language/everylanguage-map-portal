@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { BulkUploadManager, type BulkUploadFile, type BulkUploadResponse, type BulkUploadProgress } from '../services/bulkUploadService';
+import { useEffect } from 'react';
 
 export interface UploadState {
   // Audio upload state
@@ -23,7 +24,8 @@ export interface UploadState {
   textCompletionCalled: boolean;
 
   // Actions
-  startBulkUpload: (files: BulkUploadFile[], authToken: string) => Promise<BulkUploadResponse>;
+  startBulkUpload: (files: BulkUploadFile[], authToken: string, projectId: string) => Promise<BulkUploadResponse>;
+  resumeUploads: (projectId: string) => Promise<void>;
   updateProgress: (progress: BulkUploadProgress[]) => void;
   clearProgress: () => void;
   setShowProgress: (show: boolean) => void;
@@ -57,7 +59,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
   onTextUploadComplete: undefined,
   textCompletionCalled: false,
 
-  startBulkUpload: async (files: BulkUploadFile[], authToken: string) => {
+  startBulkUpload: async (files: BulkUploadFile[], authToken: string, projectId: string) => {
     const { isUploading } = get();
     
     if (isUploading) {
@@ -89,44 +91,54 @@ export const useUploadStore = create<UploadState>((set, get) => ({
     });
 
     try {
-      console.log('🚀 Starting global bulk upload with initial progress...', initialProgress);
+      console.log('🚀 Starting bulk upload via store with', files.length, 'files');
+      const result = await globalUploadManager.startBulkUpload(files, authToken, projectId);
       
-      // Start the upload
-      const result = await globalUploadManager.startBulkUpload(files, authToken);
-      
-      console.log('✅ Bulk upload initiated successfully:', result);
-      
-      // Update progress with actual media file IDs from response
-      if (result.success && result.data?.mediaRecords) {
-        const updatedProgress: BulkUploadProgress[] = result.data.mediaRecords.map(record => ({
-          mediaFileId: record.mediaFileId,
-          fileName: record.fileName,
-          status: record.status,
-          error: record.error,
-          // uploadResult will be populated later when upload completes
-        }));
-        
-        console.log('📋 Updating progress with actual media records:', updatedProgress);
-        
-        // Use a small delay to ensure database operations complete before updating
-        setTimeout(() => {
-          get().updateProgress(updatedProgress);
-        }, 100);
-      }
-      
+      console.log('✅ Bulk upload initiated successfully');
       return result;
+
     } catch (error) {
-      console.error('❌ Global bulk upload failed:', error);
+      console.error('❌ Bulk upload failed:', error);
       
-      // Reset state on error
+      // Reset state on failure
       set({
         isUploading: false,
-        uploadManager: null,
-        showProgress: false,
         uploadProgress: []
       });
       
       throw error;
+    }
+  },
+
+  resumeUploads: async (projectId: string) => {
+    console.log('🔄 Attempting to resume uploads for project:', projectId);
+    
+    try {
+      const resumedManager = await BulkUploadManager.resumeExistingUploads(
+        projectId,
+        (progress) => {
+          console.log('📊 Resumed progress update:', progress);
+          get().updateProgress(progress);
+        }
+      );
+
+      if (resumedManager) {
+        console.log('✅ Successfully resumed upload tracking');
+        
+        set({
+          uploadManager: resumedManager,
+          isUploading: true,
+          showProgress: true,
+          completionCalled: false
+        });
+
+        // Update global manager reference
+        globalUploadManager = resumedManager;
+      } else {
+        console.log('ℹ️ No uploads to resume');
+      }
+    } catch (error) {
+      console.error('❌ Failed to resume uploads:', error);
     }
   },
 
@@ -195,7 +207,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
     set({ onUploadComplete: callback });
   },
 
-  // Text upload methods
+  // Text upload methods remain the same
   startTextUpload: () => {
     console.log('🚀 Starting text upload')
     set({
@@ -251,33 +263,22 @@ export const useUploadStore = create<UploadState>((set, get) => ({
 
 // Helper hook for beforeunload warning
 export const useUploadWarning = () => {
-  const isUploading = useUploadStore(state => state.isUploading);
+  const { isUploading } = useUploadStore();
   
-  // Set up beforeunload warning
-  React.useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isUploading) {
-        e.preventDefault();
-        e.returnValue = 'Files are still uploading. Are you sure you want to leave?';
-        return 'Files are still uploading. Are you sure you want to leave?';
-      }
-    };
-
-    if (isUploading) {
-      window.addEventListener('beforeunload', handleBeforeUnload);
-      console.log('🔒 Upload warning enabled');
+  useEffect(() => {
+    if (!isUploading) {
+      console.log('🔓 Upload warning disabled');
+      return;
     }
 
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      if (!isUploading) {
-        console.log('🔓 Upload warning disabled');
-      }
+    console.log('🔒 Upload warning enabled');
+    
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      return (e.returnValue = 'You have uploads in progress. Are you sure you want to leave?');
     };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isUploading]);
-
-  return { isUploading };
 };
-
-// Add React import for the hook
-import React from 'react';

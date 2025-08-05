@@ -4,7 +4,7 @@ import { Button } from '../../../shared/design-system/components/Button';
 import { Progress } from '../../../shared/design-system/components/Progress';
 import { LoadingSpinner } from '../../../shared/design-system/components/LoadingSpinner';
 import { useUploadStore } from '../../../shared/stores/upload';
-import type { UploadProgressData } from '../../../shared/services/bulkUploadService';
+import type { UploadProgressData } from '../hooks/useUploadProgress';
 
 export interface UploadProgressDisplayProps {
   className?: string;
@@ -55,9 +55,9 @@ export function UploadProgressDisplay({
       uploading: progressData.uploadingCount,
       pending: progressData.pendingCount,
     };
-    progressPercentage = progressData.progress.percentage;
-    isComplete = progressData.progress.status === 'completed' || progressData.progress.status === 'failed';
-    hasActiveUploads = progressData.progress.status === 'in_progress' || progressData.progress.status === 'pending';
+    progressPercentage = progressData.totalProgress;
+    isComplete = progressData.completedCount + progressData.failedCount === progressData.totalFiles;
+    hasActiveUploads = progressData.isUploading;
   } else {
     // Fall back to store data structure
     summary = {

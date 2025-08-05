@@ -5,11 +5,13 @@ import { ProjectProvider } from './features/dashboard';
 import { LoginPage, RegisterPage, ForgotPasswordPage, UnauthorizedPage } from './features/auth/pages';
 import { DashboardPage } from './app/pages/DashboardPage';
 import { AppLayout } from './shared/components/Layout';
-import { CornerAudioPlayer } from './shared/components/CornerAudioPlayer';
+import { GlobalAudioPlayer } from './shared/components/GlobalAudioPlayer';
+import { GlobalUploadProgress } from './shared/components/GlobalUploadProgress';
 import { ThemeProvider } from './shared/theme';
 import { ToastManager } from './shared/design-system/hooks/useToast';
 import { LoadingSpinner } from './shared/design-system';
 import { TextUploadProgress } from './features/upload/components/TextUploadProgress';
+import { UploadResumeHandler } from './features/upload/components/UploadResumeHandler';
 
 // Lazy load non-critical pages for better performance
 const BibleProgressPage = React.lazy(() => import('./app/pages/BibleProgressPage').then(module => ({ default: module.BibleProgressPage })));
@@ -19,7 +21,6 @@ const ImagesPage = React.lazy(() => import('./features/image-management/pages').
 const CommunityCheckPage = React.lazy(() => import('./features/community-check').then(module => ({ default: module.CommunityCheckPage })));
 const UsersPage = React.lazy(() => import('./features/user-management/pages').then(module => ({ default: module.UsersPage })));
 const AudioUploadPage = React.lazy(() => import('./features/upload/pages/AudioUploadPage').then(module => ({ default: module.AudioUploadPage })));
-const ProjectCreationPage = React.lazy(() => import('./features/projects/pages/ProjectCreationPage').then(module => ({ default: module.ProjectCreationPage })));
 
 // Helper component to reduce repetition
 const ProtectedLayoutRoute = ({ children }: { children: React.ReactNode }) => (
@@ -42,8 +43,10 @@ function App() {
         <AuthProvider>
           <ProjectProvider>
             <Router>
-              <CornerAudioPlayer />
+              <GlobalAudioPlayer />
+              <GlobalUploadProgress />
               <TextUploadProgress />
+              <UploadResumeHandler />
               <Routes>
                 {/* Public routes */}
                 <Route path="/login" element={<LoginPage />} />
@@ -62,7 +65,6 @@ function App() {
                 
                 {/* Other protected routes without layout */}
                 <Route path="/upload" element={<ProtectedRoute><Suspense fallback={<PageLoadingFallback />}><AudioUploadPage /></Suspense></ProtectedRoute>} />
-                <Route path="/projects/create" element={<ProtectedRoute><Suspense fallback={<PageLoadingFallback />}><ProjectCreationPage /></Suspense></ProtectedRoute>} />
                 
                 {/* Default redirect */}
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />

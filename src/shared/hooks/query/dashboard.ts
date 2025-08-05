@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../services/supabase'
 import { useBibleProjectDashboard } from './bible-structure'
-import { useProject } from './projects'
 import type { TableRow, SupabaseError } from './base-hooks'
 
 export type User = TableRow<'users'>
@@ -73,39 +72,35 @@ export function useRecentActivity(projectId: string | null, limit: number = 10) 
     queryFn: async () => {
       if (!projectId) throw new Error('Project ID is required')
 
-      // First get audio versions for this project
-      const { data: audioVersions, error: audioVersionsError } = await supabase
+      // OPTIMIZED: Run independent queries in parallel instead of sequentially
+      const [audioVersionsResult, projectResult] = await Promise.all([
+        supabase
         .from('audio_versions')
         .select('id')
-        .eq('project_id', projectId);
+          .eq('project_id', projectId),
+        supabase
+          .from('projects')
+          .select('target_language_entity_id')
+          .eq('id', projectId)
+          .single()
+      ]);
+
+      const { data: audioVersions, error: audioVersionsError } = audioVersionsResult;
+      const { data: project, error: projectError } = projectResult;
 
       if (audioVersionsError) throw audioVersionsError;
+      if (projectError) throw projectError;
 
-      let mediaFiles: MediaFile[] = [];
-      let recentUploads: MediaFile[] = [];
+      const audioVersionIds = audioVersions?.map(v => v.id) || [];
 
-      if (audioVersions && audioVersions.length > 0) {
-        const audioVersionIds = audioVersions.map(v => v.id);
+      // OPTIMIZED: Run media files and text queries in parallel
+      const mediaQueryPromises = [];
+      const textQueryPromises = [];
 
-        // OPTIMIZED: Use direct chapter relationship instead of complex joins
-        const { data: mediaFilesData, error: mediaError } = await supabase
-          .from('media_files')
-          .select(`
-            *,
-            chapter:chapters!chapter_id(
-              chapter_number,
-              book:books!book_id(name)
-            )
-          `)
-          .in('audio_version_id', audioVersionIds)
-          .order('updated_at', { ascending: false })
-          .limit(limit)
-
-        if (mediaError) throw mediaError;
-        mediaFiles = mediaFilesData || [];
-
-        // OPTIMIZED: Use direct chapter relationship for recent uploads
-        const { data: recentUploadsData, error: uploadsError } = await supabase
+      // Single media files query instead of two separate ones - we'll sort in memory
+      if (audioVersionIds.length > 0) {
+        mediaQueryPromises.push(
+          supabase
           .from('media_files')
           .select(`
             *,
@@ -116,24 +111,14 @@ export function useRecentActivity(projectId: string | null, limit: number = 10) 
           `)
           .in('audio_version_id', audioVersionIds)
           .order('created_at', { ascending: false })
-          .limit(limit)
-
-        if (uploadsError) throw uploadsError;
-        recentUploads = recentUploadsData || [];
+            .limit(limit * 2) // Get more records to allow for sorting both ways
+        );
       }
 
-      // Get recent text updates (when verse_texts have project_id in future)
-      // For now, filter by project's target language
-      const { data: project } = await supabase
-        .from('projects')
-        .select('target_language_entity_id')
-        .eq('id', projectId)
-        .single()
-
-      let recentTextUpdates: VerseText[] = []
-      
+      // Text updates query
       if (project?.target_language_entity_id) {
-        const { data: textUpdates, error: textError } = await supabase
+        textQueryPromises.push(
+          supabase
           .from('verse_texts')
           .select(`
             *,
@@ -152,9 +137,41 @@ export function useRecentActivity(projectId: string | null, limit: number = 10) 
           .eq('text_versions.language_entity_id', project.target_language_entity_id)
           .order('updated_at', { ascending: false })
           .limit(limit)
+        );
+      }
 
+      // Execute all remaining queries in parallel
+      const allPromises = [...mediaQueryPromises, ...textQueryPromises];
+      const results = await Promise.all(allPromises);
+
+      let mediaFiles: MediaFile[] = [];
+      let recentUploads: MediaFile[] = [];
+      let recentTextUpdates: VerseText[] = [];
+
+      // Process results
+      if (results.length > 0 && audioVersionIds.length > 0) {
+        const { data: allMediaFiles, error: mediaError } = results[0];
+        if (mediaError) throw mediaError;
+        
+        if (allMediaFiles) {
+          // Sort by updated_at for recent activity
+          mediaFiles = ([...allMediaFiles] as any)
+            .sort((a: any, b: any) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
+            .slice(0, limit);
+          
+          // Sort by created_at for recent uploads  
+          recentUploads = ([...allMediaFiles] as any)
+            .sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+            .slice(0, limit);
+        }
+      }
+
+      // Process text updates if they exist
+      const textResultIndex = audioVersionIds.length > 0 ? 1 : 0;
+      if (results.length > textResultIndex && project?.target_language_entity_id) {
+        const { data: textUpdates, error: textError } = results[textResultIndex];
         if (!textError) {
-          recentTextUpdates = textUpdates || []
+          recentTextUpdates = (textUpdates as any) || [];
         }
       }
 
@@ -319,58 +336,53 @@ export function useProjectUsers(projectId: string | null) {
  * Hook to fetch complete project metadata
  */
 export function useProjectMetadata(projectId: string | null) {
-  const { data: project } = useProject(projectId)
   const { data: users } = useProjectUsers(projectId)
 
   return useQuery<ProjectMetadata, SupabaseError>({
     queryKey: ['project-metadata', projectId],
     queryFn: async () => {
-      if (!projectId || !project) throw new Error('Project data is required')
+      if (!projectId) throw new Error('Project ID is required')
 
-      // Get language entities and region
-      let sourceLanguage = null
-      let targetLanguage = null
-      let region = null
-
-      if (project.source_language_entity_id) {
-        const { data } = await supabase
-          .from('language_entities')
-          .select('id, name')
-          .eq('id', project.source_language_entity_id)
+      // OPTIMIZED: Single query with JOINs instead of multiple sequential queries
+      const { data: projectWithRelations, error } = await supabase
+        .from('projects')
+        .select(`
+          id,
+          name,
+          description,
+          created_at,
+          updated_at,
+          source_language_entity:language_entities!source_language_entity_id(
+            id,
+            name
+          ),
+          target_language_entity:language_entities!target_language_entity_id(
+            id,
+            name
+          ),
+          region:regions!region_id(
+            id,
+            name
+          )
+        `)
+        .eq('id', projectId)
           .single()
-        sourceLanguage = data
-      }
 
-      if (project.target_language_entity_id) {
-        const { data } = await supabase
-          .from('language_entities')
-          .select('id, name')
-          .eq('id', project.target_language_entity_id)
-          .single()
-        targetLanguage = data
-      }
-
-      if (project.region_id) {
-        const { data } = await supabase
-          .from('regions')
-          .select('id, name')
-          .eq('id', project.region_id)
-          .single()
-        region = data
-      }
+      if (error) throw error
+      if (!projectWithRelations) throw new Error('Project not found')
 
       return {
-        name: project.name,
-        description: project.description || '',
-        sourceLanguage,
-        targetLanguage,
-        region,
+        name: projectWithRelations.name,
+        description: projectWithRelations.description || '',
+        sourceLanguage: projectWithRelations.source_language_entity || null,
+        targetLanguage: projectWithRelations.target_language_entity || null,
+        region: projectWithRelations.region || null,
         users: users || [],
-        createdAt: project.created_at || null,
-        updatedAt: project.updated_at || null
+        createdAt: projectWithRelations.created_at || null,
+        updatedAt: projectWithRelations.updated_at || null
       }
     },
-    enabled: !!projectId && !!project,
+    enabled: !!projectId,
     staleTime: 10 * 60 * 1000, // 10 minutes
   })
 }
@@ -414,31 +426,22 @@ export function useTextProgressByVersion(projectId: string | null, bibleVersionI
 
       if (!books) return []
 
-      // For each book, calculate text progress
-      const booksWithTextProgress = await Promise.all(
-        books.map(async (book: {
-          id: string
-          name: string
-          chapters: Array<{
-            id: string
-            chapter_number: number
-            total_verses: number
-            verses: Array<{ id: string; verse_number: number }>
-          }>
-        }) => {
-          const chaptersWithTextProgress = await Promise.all(
-            (book.chapters || []).map(async (chapter) => {
-              // Get verse texts for this chapter in the project's target language
-              const verseIds = chapter.verses?.map((v) => v.id) || []
-              
-              if (verseIds.length === 0) {
-                return {
-                  ...chapter,
-                  textProgress: 0,
-                  versesWithText: 0
-                }
-              }
+      // OPTIMIZED: Collect all verse IDs from all books/chapters at once
+      const allVerseIds: string[] = []
+      const verseToChapterMap = new Map<string, string>() // verse_id -> chapter_id
+      
+      books.forEach(book => {
+        book.chapters?.forEach(chapter => {
+          chapter.verses?.forEach(verse => {
+            allVerseIds.push(verse.id)
+            verseToChapterMap.set(verse.id, chapter.id)
+          })
+        })
+      })
 
+      // OPTIMIZED: Single query to get all verse texts for all verses at once
+      let verseTextsWithChapter: { verse_id: string; chapter_id: string }[] = []
+      if (allVerseIds.length > 0) {
               const { data: verseTexts } = await supabase
                 .from('verse_texts')
                 .select(`
@@ -447,11 +450,40 @@ export function useTextProgressByVersion(projectId: string | null, bibleVersionI
                     language_entity_id
                   )
                 `)
-                .in('verse_id', verseIds)
+          .in('verse_id', allVerseIds)
                 .eq('text_versions.language_entity_id', project.target_language_entity_id)
-                // No limit needed for verse texts per chapter
 
-              const versesWithText = new Set(verseTexts?.map(vt => vt.verse_id) || []).size
+        // Map verse texts to their chapters
+        verseTextsWithChapter = (verseTexts || []).map(vt => ({
+          verse_id: vt.verse_id,
+          chapter_id: verseToChapterMap.get(vt.verse_id) || ''
+        })).filter(item => item.chapter_id)
+      }
+
+      // Group verse texts by chapter for fast lookup
+      const verseTextsByChapter = new Map<string, Set<string>>()
+      verseTextsWithChapter.forEach(vt => {
+        if (!verseTextsByChapter.has(vt.chapter_id)) {
+          verseTextsByChapter.set(vt.chapter_id, new Set())
+        }
+        verseTextsByChapter.get(vt.chapter_id)!.add(vt.verse_id)
+      })
+
+      // Process books and chapters in memory (no more N+1 queries!)
+      const booksWithTextProgress = books.map((book: {
+        id: string
+        name: string
+        chapters: Array<{
+          id: string
+          chapter_number: number
+          total_verses: number
+          verses: Array<{ id: string; verse_number: number }>
+        }>
+      }) => {
+        const chaptersWithTextProgress = (book.chapters || []).map((chapter) => {
+          // Get verse texts for this chapter from our pre-computed map
+          const verseTextsInChapter = verseTextsByChapter.get(chapter.id) || new Set()
+          const versesWithText = verseTextsInChapter.size
               const textProgress = chapter.total_verses > 0 ? (versesWithText / chapter.total_verses) * 100 : 0
 
               return {
@@ -460,7 +492,6 @@ export function useTextProgressByVersion(projectId: string | null, bibleVersionI
                 versesWithText
               }
             })
-          )
 
           // Calculate book-level text progress
           const totalVerses = chaptersWithTextProgress.reduce((sum, ch) => sum + ch.total_verses, 0)
@@ -475,7 +506,6 @@ export function useTextProgressByVersion(projectId: string | null, bibleVersionI
             totalVerses
           }
         })
-      )
 
       return booksWithTextProgress
     },
@@ -839,7 +869,7 @@ export function useChapterTableData(projectId: string | null, bibleVersionId: st
         .eq('books.bible_version_id', bibleVersionId)
         .order('books.global_order', { ascending: true })
         .order('chapter_number', { ascending: true })
-        // No limit needed for chapters query
+        .limit(2000) // Reasonable limit: ~1200 chapters in Bible + buffer for custom content
 
       if (chaptersError) throw chaptersError
 
@@ -864,7 +894,7 @@ export function useChapterTableData(projectId: string | null, bibleVersionId: st
         .in('audio_version_id', audioVersionIds)
         .not('chapter_id', 'is', null)
         .order('created_at', { ascending: false })
-        // Monitor performance - add limit if this query becomes slow
+        .limit(10000) // Reasonable limit: prevents runaway queries while allowing large projects
 
       if (mediaFilesError) throw mediaFilesError
 

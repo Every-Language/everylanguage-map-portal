@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Search, Clock, Plus } from 'lucide-react';
 import { useProjects } from '../../hooks/query/projects';
-import { useLanguageEntities } from '../../hooks/query/language-entities';
+import { useLanguageEntitiesByIds } from '../../hooks/query/language-entities';
 import { 
   Dialog,
   DialogContent,
@@ -45,7 +45,18 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
 
   // Fetch projects and language entities
   const { data: projects = [], isLoading, error } = useProjects();
-  const { data: languageEntities = [] } = useLanguageEntities();
+  
+  // Extract unique language entity IDs from projects
+  const languageIds = useMemo(() => {
+    const ids = new Set<string>();
+    projects.forEach(project => {
+      if (project.source_language_entity_id) ids.add(project.source_language_entity_id);
+      if (project.target_language_entity_id) ids.add(project.target_language_entity_id);
+    });
+    return Array.from(ids);
+  }, [projects]);
+  
+  const { data: languageEntities = [], isLoading: languagesLoading } = useLanguageEntitiesByIds(languageIds);
 
   // Load recent projects from localStorage
   useEffect(() => {
@@ -116,6 +127,7 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
     languageEntities.forEach(entity => {
       map.set(entity.id, entity.name);
     });
+    
     return map;
   }, [languageEntities]);
 
@@ -123,12 +135,16 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
   const projectsWithMetadata = useMemo((): ProjectWithMetadata[] => {
     return projects.map(project => ({
       ...project,
-      target_language_name: languageLookup.get(project.target_language_entity_id) || 'Unknown',
-      source_language_name: languageLookup.get(project.source_language_entity_id) || 'Unknown',
+      target_language_name: languagesLoading 
+        ? 'Loading...' 
+        : languageLookup.get(project.target_language_entity_id) || 'Unknown',
+      source_language_name: languagesLoading 
+        ? 'Loading...' 
+        : languageLookup.get(project.source_language_entity_id) || 'Unknown',
       progress: 0, // TODO: Calculate actual progress
       member_count: 1 // TODO: Get actual member count
     }));
-  }, [projects, languageLookup]);
+  }, [projects, languageLookup, languagesLoading]);
 
   // Filter projects based on search
   const filteredProjects = useMemo(() => {
@@ -165,7 +181,7 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
   if (showCreateForm) {
     return (
       <Dialog open={isOpen} onOpenChange={(open) => !open && setShowCreateForm(false)}>
-        <DialogContent size="4xl" className="max-h-[90vh] flex flex-col">
+        <DialogContent size="5xl" className="max-h-[95vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Create New Project</DialogTitle>
             <DialogDescription>

@@ -1,7 +1,5 @@
-export { 
-  useCommunityChecking,
-  type UseCommunityCheckingProps,
-  type UseCommunityCheckingReturn,
-  type MediaFileWithRelations,
-  type CheckStatus 
-} from './useCommunityChecking'; 
+// Community Check Hooks
+export { useCommunityChecking } from './useCommunityChecking';
+
+// Phase 7 hooks  
+// export { useCommunityCheckingWorkflow } from './useCommunityCheckingWorkflow'; 

@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { Search, ChevronDown, Clock, Users, Globe, ArrowRight, X } from 'lucide-react'
 import { useProjects } from '@/shared/hooks/query/projects'
-import { useLanguageEntities } from '@/shared/hooks/query/language-entities'
+import { useLanguageEntitiesByIds } from '@/shared/hooks/query/language-entities'
 import { useBibleProjectDashboard } from '@/shared/hooks/query/bible-structure'
 import { Button } from '@/shared/design-system/components/Button'
 import { Input } from '@/shared/design-system/components/Input'
@@ -34,7 +34,18 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
 
   // Fetch projects and language entities
   const { data: projects = [], isLoading, error } = useProjects()
-  const { data: languageEntities = [] } = useLanguageEntities()
+  
+  // Extract unique language entity IDs from all projects
+  const languageIds = useMemo(() => {
+    const ids = new Set<string>();
+    projects.forEach(project => {
+      if (project.source_language_entity_id) ids.add(project.source_language_entity_id);
+      if (project.target_language_entity_id) ids.add(project.target_language_entity_id);
+    });
+    return Array.from(ids);
+  }, [projects]);
+  
+  const { data: languageEntities = [] } = useLanguageEntitiesByIds(languageIds)
 
   // Get dashboard data for progress calculation
   const { data: dashboardData } = useBibleProjectDashboard(selectedProject?.id || null)

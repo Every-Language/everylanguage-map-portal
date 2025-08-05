@@ -24,7 +24,7 @@ import {
 import type { MediaFileWithVerseInfo } from '../../../../shared/hooks/query/media-files';
 import { useMediaFilesVerseTimestamps } from '../../../../shared/hooks/query/media-files';
 
-type SortField = 'filename' | 'upload_status' | 'publish_status' | 'created_at' | 'verse_reference';
+type SortField = 'created_at' | 'verse_reference';
 type PublishStatus = 'pending' | 'published' | 'archived';
 
 interface AudioFileTableProps {
@@ -322,49 +322,16 @@ export const AudioFileTable: React.FC<AudioFileTableProps> = ({
                       </button>
                     </th>
                     <th className="text-left p-3 font-medium text-gray-900 dark:text-gray-100">
-                      <button
-                        onClick={() => handleSort('filename')}
-                        className="flex items-center space-x-1 hover:text-blue-600 dark:hover:text-blue-400"
-                      >
-                        <span>Filename</span>
-                        {sortField === 'filename' && (
-                          <span className="text-blue-600 dark:text-blue-400">
-                            {sortDirection === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
+                      <span>Filename</span>
                     </th>
                     <th className="text-left p-3 font-medium text-gray-900 dark:text-gray-100">
-                      <span className="flex items-center space-x-1">
-                        <ClockIcon className="h-4 w-4" />
-                        <span>Verse Timestamps</span>
-                      </span>
+                      <span>Verse Timestamps</span>
                     </th>
                     <th className="text-left p-3 font-medium text-gray-900 dark:text-gray-100">
-                      <button
-                        onClick={() => handleSort('upload_status')}
-                        className="flex items-center space-x-1 hover:text-blue-600 dark:hover:text-blue-400"
-                      >
-                        <span>Upload Status</span>
-                        {sortField === 'upload_status' && (
-                          <span className="text-blue-600 dark:text-blue-400">
-                            {sortDirection === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
+                      <span>Upload Status</span>
                     </th>
                     <th className="text-left p-3 font-medium text-gray-900 dark:text-gray-100">
-                      <button
-                        onClick={() => handleSort('publish_status')}
-                        className="flex items-center space-x-1 hover:text-blue-600 dark:hover:text-blue-400"
-                      >
-                        <span>Status</span>
-                        {sortField === 'publish_status' && (
-                          <span className="text-blue-600 dark:text-blue-400">
-                            {sortDirection === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
+                      <span>Publish Status</span>
                     </th>
                     <th className="text-left p-3 font-medium text-gray-900 dark:text-gray-100">Actions</th>
                   </tr>
@@ -415,7 +382,7 @@ export const AudioFileTable: React.FC<AudioFileTableProps> = ({
                               {timestampsStatus.hasTimestamps ? (
                                 <button
                                   onClick={() => toggleRowExpansion(file.id)}
-                                  className="flex items-center space-x-1 text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-200"
+                                  className="flex items-center space-x-1 text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-200"
                                   disabled={loadingTimestamps}
                                 >
                                   {isExpanded ? (

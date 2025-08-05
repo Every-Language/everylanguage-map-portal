@@ -15,6 +15,9 @@ export interface BulkUploadWithProgressProps {
   /** Audio version ID for the uploads */
   audioVersionId: string;
   
+  /** Project ID for the uploads */
+  projectId: string;
+  
   /** Called when uploads are complete */
   onUploadComplete?: () => void;
   
@@ -28,6 +31,7 @@ export interface BulkUploadWithProgressProps {
 export function BulkUploadWithProgress({
   languageEntityId,
   audioVersionId,
+  projectId,
   onUploadComplete,
   onError,
   transformMetadata
@@ -44,10 +48,7 @@ export function BulkUploadWithProgress({
     startTracking,
     stopTracking,
     isTracking
-  } = useUploadProgress({
-    pollingInterval: 2000,
-    autoStopOnComplete: true
-  });
+  } = useUploadProgress();
 
   // Handle file selection
   const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -107,7 +108,7 @@ export function BulkUploadWithProgress({
 
       // Create upload manager and start upload
       const uploadManager = new BulkUploadManager();
-      const response = await uploadManager.startBulkUpload(bulkUploadFiles, session.access_token);
+      const response = await uploadManager.startBulkUpload(bulkUploadFiles, session.access_token, projectId);
 
              if (response.success && response.data) {
          // Extract media file IDs for progress tracking
@@ -117,7 +118,7 @@ export function BulkUploadWithProgress({
          
          // Start tracking progress
          if (fileIds.length > 0) {
-           startTracking(fileIds);
+           startTracking();
          }
          
          // Clear selected files since upload has started
@@ -135,7 +136,7 @@ export function BulkUploadWithProgress({
      } finally {
        setIsUploading(false);
      }
-   }, [selectedFiles, generateMetadata, startTracking, onError]);
+   }, [selectedFiles, generateMetadata, startTracking, onError, projectId]);
 
    // Handle file removal
    const removeFile = useCallback((index: number) => {

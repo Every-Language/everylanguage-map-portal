@@ -1,24 +1,17 @@
 import React from 'react';
 import { Form, FormField, FormLabel, FormMessage } from '../../../shared/design-system/components/Form';
 import { Input } from '../../../shared/design-system/components/Input';
-import { useProjectCreation } from '../hooks/useProjectCreation';
+import { useProjectCreation } from '../hooks';
 
 export function ProjectInfoStep() {
-  const { state, dispatch } = useProjectCreation();
-  const { projectInfo } = state.formData;
+  const { projectData, updateProjectData } = useProjectCreation();
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    dispatch({
-      type: 'UPDATE_PROJECT_INFO',
-      payload: { name: e.target.value },
-    });
+    updateProjectData({ name: e.target.value });
   };
 
   const handleDescriptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    dispatch({
-      type: 'UPDATE_PROJECT_INFO',
-      payload: { description: e.target.value },
-    });
+    updateProjectData({ description: e.target.value });
   };
 
   return (
@@ -37,7 +30,7 @@ export function ProjectInfoStep() {
           <FormLabel required>Project Name</FormLabel>
           <Input
             type="text"
-            value={projectInfo.name}
+            value={projectData.name || ''}
             onChange={handleNameChange}
             placeholder="Enter your project name"
             required
@@ -50,7 +43,7 @@ export function ProjectInfoStep() {
         <FormField name="description">
           <FormLabel required>Description</FormLabel>
           <textarea
-            value={projectInfo.description}
+            value={projectData.description || ''}
             onChange={handleDescriptionChange}
             placeholder="Describe your project, its purpose, and any specific requirements..."
             className="w-full min-h-[120px] px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-vertical"

@@ -6,7 +6,6 @@ import type { Image, ImageSet } from '../../../shared/types/images';
 
 // Types - these would eventually move to the types directory
 interface ImageFilters {
-  targetType: string;
   searchText: string;
   setId: string;
 }
@@ -28,7 +27,6 @@ export function useImageManagement() {
   
   // State management
   const [filters, setFilters] = useState<ImageFilters>({
-    targetType: 'all',
     searchText: '',
     setId: 'all'
   });
@@ -108,14 +106,11 @@ export function useImageManagement() {
   // Filter images
   const filteredImages = useMemo(() => {
     return images.filter((image: Image) => {
-      // Filter by target type
-      const matchesTargetType = filters.targetType === 'all' || image.target_type === filters.targetType;
-      
       // Filter by search text
       const matchesSearch = !filters.searchText || 
         image.remote_path.toLowerCase().includes(filters.searchText.toLowerCase());
         
-      return matchesTargetType && matchesSearch;
+      return matchesSearch;
     });
   }, [images, filters]);
 

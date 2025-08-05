@@ -147,7 +147,11 @@ export function useMediaFilesByProject(projectId: string | null) {
     // Cleanup subscription on unmount
     return () => {
       console.log('🧹 Cleaning up media files subscription');
-      supabase.removeChannel(subscription);
+      try {
+        supabase.removeChannel(subscription);
+      } catch (error) {
+        console.warn('Failed to remove media files subscription channel:', error);
+      }
     };
   }, [projectId, queryClient]);
 
@@ -285,12 +289,55 @@ export function useMediaFilesByProjectPaginated(
     chapterId?: string | null
     publishStatus?: string | null
     uploadStatus?: string | null
+    checkStatus?: string | null
     searchText?: string | null
     sortField?: string | null
     sortDirection?: 'asc' | 'desc' | null
     showDeleted?: boolean
   }
 ) {
+  const queryClient = useQueryClient();
+
+  // Set up real-time subscription for media files updates for paginated query
+  useEffect(() => {
+    if (!projectId) return;
+
+    console.log('🔔 Setting up media files paginated real-time subscription for project:', projectId);
+
+    const subscription = supabase
+      .channel(`media_files_paginated_${projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to all changes (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'media_files'
+        },
+        (payload) => {
+          console.log('📡 Media file change detected (paginated):', payload);
+          
+          // Invalidate and refetch the paginated media files query
+          // We need to invalidate all queries that start with the base key since options vary
+          queryClient.invalidateQueries({
+            queryKey: ['media_files_by_project_paginated', projectId]
+          });
+        }
+      )
+      .subscribe((status) => {
+        console.log('🔔 Media files paginated subscription status:', status);
+      });
+
+    // Cleanup subscription on unmount
+    return () => {
+      console.log('🧹 Cleaning up media files paginated subscription');
+      try {
+        supabase.removeChannel(subscription);
+      } catch (error) {
+        console.warn('Failed to remove media files paginated subscription channel:', error);
+      }
+    };
+  }, [projectId, queryClient]);
+
   return useQuery({
     queryKey: ['media_files_by_project_paginated', projectId, options],
     queryFn: async () => {
@@ -388,9 +435,13 @@ export function useMediaFilesByProjectPaginated(
         query = query.eq('publish_status', options.publishStatus as 'pending' | 'published' | 'archived')
       }
       
-             if (options.uploadStatus && options.uploadStatus !== 'all') {
-         query = query.eq('upload_status', options.uploadStatus as 'pending' | 'uploading' | 'completed' | 'failed')
-       }
+                   if (options.uploadStatus && options.uploadStatus !== 'all') {
+        query = query.eq('upload_status', options.uploadStatus as 'pending' | 'uploading' | 'completed' | 'failed')
+      }
+      
+      if (options.checkStatus && options.checkStatus !== 'all') {
+        query = query.eq('check_status', options.checkStatus as 'pending' | 'requires_review' | 'approved' | 'rejected')
+      }
       
       // Search functionality - search in filenames and verse references
       if (options.searchText && options.searchText.trim()) {
@@ -404,10 +455,9 @@ export function useMediaFilesByProjectPaginated(
       const sortDirection = options.sortDirection || 'desc'
       
       if (sortField === 'verse_reference') {
-        // Sort by created_at for now since complex nested sorting is challenging
-        query = query.order('created_at', { ascending: sortDirection === 'asc' })
-      } else if (sortField === 'filename') {
-        query = query.order('remote_path', { ascending: sortDirection === 'asc' })
+        // Sort by start_verse_id for consistent verse reference ordering
+        // This works with systematic verse IDs and avoids PostgREST limitations
+        query = query.order('start_verse_id', { ascending: sortDirection === 'asc' })
       } else {
         query = query.order(sortField, { ascending: sortDirection === 'asc' })
       }
@@ -422,16 +472,7 @@ export function useMediaFilesByProjectPaginated(
       
             // Transform the data to include enhanced verse information (same as original hook)
       const enhancedFiles: MediaFileWithVerseInfo[] = (data || []).map(file => {
-        // Debug logging to see what we're getting
-        console.log('Processing file:', {
-          id: file.id,
-          chapter: file.chapter,
-          start_verse: file.start_verse,
-          end_verse: file.end_verse,
-          chapter_id: file.chapter_id,
-          start_verse_id: file.start_verse_id,
-          end_verse_id: file.end_verse_id
-        });
+        
 
         const chapter = file.chapter as { 
           id: string; 
@@ -452,13 +493,6 @@ export function useMediaFilesByProjectPaginated(
 
         let verseReference = 'Unknown';
         
-        // Debug the verse reference construction
-        console.log('Verse reference construction:', {
-          bookName: book?.name,
-          chapterNumber: chapter?.chapter_number,
-          startVerseNumber: startVerse?.verse_number,
-          endVerseNumber: endVerse?.verse_number
-        });
         
         if (book?.name && chapter?.chapter_number !== undefined && startVerse?.verse_number !== undefined) {
           if (startVerse.verse_number === endVerse?.verse_number || !endVerse) {

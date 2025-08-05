@@ -14,3 +14,41 @@
     -moz-osx-font-smoothing: grayscale;
   }
 }
+
+/* Audio player slider styling */
+.slider-primary::-webkit-slider-thumb {
+  appearance: none;
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: rgb(var(--color-primary-600));
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.slider-primary::-webkit-slider-thumb:hover {
+  background: rgb(var(--color-primary-700));
+}
+
+.slider-primary::-moz-range-thumb {
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: rgb(var(--color-primary-600));
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.slider-primary::-moz-range-thumb:hover {
+  background: rgb(var(--color-primary-700));
+}
+
+.dark .slider-primary::-webkit-slider-thumb {
+  border-color: rgb(var(--color-gray-700));
+}
+
+.dark .slider-primary::-moz-range-thumb {
+  border-color: rgb(var(--color-gray-700));
+}

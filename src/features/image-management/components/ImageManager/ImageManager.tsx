@@ -1,12 +1,13 @@
 import React from 'react';
 import { useImageManagement } from '../../hooks/useImageManagement';
 import { DataManagementLayout } from '../../../../shared/components/DataManagementLayout';
-import { ImageFilters } from './ImageFilters.tsx';
+import { VersionSelector } from '../../../../shared/components';
 import { ImageTable } from './ImageTable.tsx';
 import { CreateImageSetModal } from './CreateImageSetModal.tsx';
 import { EditImageModal } from './EditImageModal.tsx';
 import { ImageUploadModal } from '../../../../features/upload/components/ImageUploadModal';
-import { Alert } from '../../../../shared/design-system';
+import { Alert, Button } from '../../../../shared/design-system';
+import { PlusIcon } from '@heroicons/react/24/outline';
 
 export const ImageManager: React.FC = () => {
   const imageManagement = useImageManagement();
@@ -19,16 +20,30 @@ export const ImageManager: React.FC = () => {
     );
   }
 
-  const filtersSection = (
-    <ImageFilters
-      filters={imageManagement.filters}
-      imageSets={imageManagement.imageSets}
-      onFilterChange={imageManagement.operations.handleFilterChange}
-      selectedCount={imageManagement.selection.selectedCount}
-      onBulkPublishStatusChange={imageManagement.operations.handleBulkPublishStatusChange}
-      onClearSelection={imageManagement.selection.clearSelection}
-      batchUpdatePending={imageManagement.mutations.batchUpdatePublishStatus.isPending}
-    />
+  const imageSetSelector = (
+    <VersionSelector
+      title="Image Set"
+      selectedVersionId={imageManagement.filters.setId}
+      onVersionChange={(setId) => imageManagement.operations.handleFilterChange('setId', setId)}
+      versions={imageManagement.imageSets.map(set => ({ id: set.id, name: set.name }))}
+      versionsLoading={imageManagement.isLoading}
+      allowAllVersions={true}
+    >
+      <Button 
+        variant="outline" 
+        onClick={imageManagement.modals.openCreateSet}
+      >
+        <PlusIcon className="h-4 w-4 mr-2" />
+        Create Set
+      </Button>
+    </VersionSelector>
+  );
+
+  const actions = (
+    <Button onClick={imageManagement.modals.openUpload}>
+      <PlusIcon className="h-4 w-4 mr-2" />
+      Upload Images
+    </Button>
   );
 
   const tableSection = (
@@ -47,6 +62,15 @@ export const ImageManager: React.FC = () => {
       getTargetDisplayName={imageManagement.utils.getTargetDisplayName}
       getSetName={imageManagement.utils.getSetName}
       updatePublishStatusPending={imageManagement.mutations.updatePublishStatus.isPending}
+      
+      // Search functionality
+      searchText={imageManagement.filters.searchText}
+      onSearchChange={(value) => imageManagement.operations.handleFilterChange('searchText', value)}
+      
+      // Bulk operations
+      onBulkPublishStatusChange={imageManagement.operations.handleBulkPublishStatusChange}
+      onClearSelection={imageManagement.selection.clearSelection}
+      batchUpdatePending={imageManagement.mutations.batchUpdatePublishStatus.isPending}
     />
   );
 
@@ -87,34 +111,19 @@ export const ImageManager: React.FC = () => {
   );
 
   return (
-    <DataManagementLayout
-      title="Images"
-      description="Manage your uploaded images and image sets"
-      actions={
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={imageManagement.modals.openCreateSet}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
-            </svg>
-            Create Set
-          </button>
-          <button
-            onClick={imageManagement.modals.openUpload}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            Upload Images
-          </button>
-        </div>
-      }
-      filters={filtersSection}
-      table={tableSection}
-      modals={modalsSection}
-    />
+    <div className="space-y-6">
+      {/* Image Set Selector - Sticky */}
+      <div className="sticky top-0 z-30 bg-white dark:bg-gray-900">
+        {imageSetSelector}
+      </div>
+
+      <DataManagementLayout
+        title="Images"
+        description="Manage your uploaded images and image sets"
+        actions={actions}
+        table={tableSection}
+        modals={modalsSection}
+      />
+    </div>
   );
 }; 

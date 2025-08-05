@@ -31,7 +31,7 @@ export interface BibleTextFilters {
 }
 
 export interface BibleTextSort {
-  field: 'book_name' | 'chapter_number' | 'verse_number' | 'verse_text' | 'text_version_name' | 'publish_status' | 'created_at';
+  field: 'verse_reference' | 'text_version_name' | 'created_at';
   direction: 'asc' | 'desc';
 }
 
@@ -121,7 +121,7 @@ export function useBibleTextManagement(projectId: string | null) {
   });
   
   // Extract data and count from paginated result
-  const verseTexts = paginatedResult?.data || [];
+  const verseTexts = useMemo(() => paginatedResult?.data || [], [paginatedResult?.data]);
   const totalItems = paginatedResult?.count || 0;
   const totalPages = Math.ceil(totalItems / tableState.itemsPerPage);
   const { data: textVersions, isLoading: textVersionsLoading, refetch: refetchTextVersions } = useTextVersionsByProject(projectId || '');

@@ -1,14 +1,8 @@
-// Hooks
-export { 
-  useCommunityChecking,
-  type UseCommunityCheckingProps,
-  type UseCommunityCheckingReturn,
-  type MediaFileWithRelations,
-  type CheckStatus 
-} from './hooks';
+// Community Check Feature Exports
+export * from './types';
+export * from './hooks';
+export * from './components';
+export * from './context/CheckingWorkflowContext';
 
-// Components  
-export { CheckingWorkflow, type CheckingWorkflowProps } from './components';
-
-// Pages
-export { CommunityCheckPage } from './pages'; 
+// Main page export
+export { default as CommunityCheckPage } from './pages/CommunityCheckPage'; 

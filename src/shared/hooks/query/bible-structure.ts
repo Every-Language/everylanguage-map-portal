@@ -208,17 +208,7 @@ export function useBooksWithProgress(projectId: string | null, bibleVersionId: s
     queryFn: async () => {
       if (!projectId || !bibleVersionId) return []
 
-      // Get all books for this bible version
-      const { data: books, error: booksError } = await supabase
-        .from('books')
-        .select('*')
-        .eq('bible_version_id', bibleVersionId)
-        .order('global_order', { ascending: true })
-        // No limit needed - there are only 66 books in the Bible
-
-      if (booksError) throw booksError
-
-      // Get audio versions for this project
+      // Get audio versions for this project first
       const { data: audioVersions } = await supabase
         .from('audio_versions')
         .select('id')
@@ -226,80 +216,98 @@ export function useBooksWithProgress(projectId: string | null, bibleVersionId: s
 
       const audioVersionIds = audioVersions?.map(v => v.id) || [];
 
-      // Calculate progress for each book
-      const booksWithProgress: BibleBookWithProgress[] = await Promise.all(
-        books.map(async (book) => {
-          // Get chapters for this book
-          const { data: chapters, error: chaptersError } = await supabase
-            .from('chapters')
-            .select('*')
-            .eq('book_id', book.id)
-            .order('chapter_number', { ascending: true })
-            // No limit needed - most books have < 150 chapters
+      // OPTIMIZED: Single query to get all books with their chapters using JOIN
+      const { data: booksWithChapters, error: booksError } = await supabase
+        .from('books')
+        .select(`
+          id,
+          name,
+          book_number,
+          global_order,
+          created_at,
+          updated_at,
+          bible_version_id,
+          testament,
+          chapters (
+            id,
+            chapter_number,
+            total_verses,
+            global_order,
+            book_id,
+            created_at,
+            updated_at
+          )
+        `)
+        .eq('bible_version_id', bibleVersionId)
+        .order('global_order', { ascending: true })
+        .order('chapters.chapter_number', { ascending: true })
 
-          if (chaptersError) throw chaptersError
+      if (booksError) throw booksError
 
-          // OPTIMIZED: Get media files directly by chapter_id - no more junction tables!
-          const { data: mediaFiles, error: mediaError } = await supabase
-            .from('media_files')
-            .select('id, chapter_id')
-            .in('audio_version_id', audioVersionIds)
-            .in('chapter_id', chapters.map(c => c.id))
-            .not('chapter_id', 'is', null)
-            // Reasonable limit per book - adjust if needed
+      // OPTIMIZED: Single query to get all media files for all chapters at once
+      let allMediaFiles: { id: string; chapter_id: string | null }[] = []
+      if (audioVersionIds.length > 0) {
+        const { data: mediaFiles, error: mediaError } = await supabase
+          .from('media_files')
+          .select('id, chapter_id')
+          .in('audio_version_id', audioVersionIds)
+          .not('chapter_id', 'is', null)
 
-          if (mediaError) throw mediaError
+        if (mediaError) throw mediaError
+        allMediaFiles = mediaFiles || []
+      }
 
-          // Group media files by chapter
-          const mediaFilesByChapter = new Map<string, string[]>()
-          mediaFiles?.forEach(file => {
-            if (file.chapter_id) {
-              if (!mediaFilesByChapter.has(file.chapter_id)) {
-                mediaFilesByChapter.set(file.chapter_id, [])
-              }
-              mediaFilesByChapter.get(file.chapter_id)!.push(file.id)
-            }
-          })
+      // Group media files by chapter for fast lookup
+      const mediaFilesByChapter = new Map<string, string[]>()
+      allMediaFiles.forEach(file => {
+        if (file.chapter_id) {
+          if (!mediaFilesByChapter.has(file.chapter_id)) {
+            mediaFilesByChapter.set(file.chapter_id, [])
+          }
+          mediaFilesByChapter.get(file.chapter_id)!.push(file.id)
+        }
+      })
 
-          // Calculate status for each chapter - SIMPLIFIED: Chapter-level tracking
-          const chaptersWithStatus: ChapterWithStatus[] = chapters.map(chapter => {
-            const mediaFileIds = mediaFilesByChapter.get(chapter.id) || []
-            const hasMediaFiles = mediaFileIds.length > 0
-            
-            // OPTIMIZED: Chapter-level progress - if chapter has any media files, consider it complete
-            const versesCovered = hasMediaFiles ? chapter.total_verses : 0
-            const status = calculateChapterStatus(chapter.total_verses, versesCovered)
-            const progress = calculateProgress(versesCovered, chapter.total_verses)
-
-            return {
-              ...chapter,
-              status,
-              progress,
-              mediaFileIds,
-              versesCovered
-            }
-          })
-
-          // Calculate book progress
-          const totalChapters = chaptersWithStatus.length
-          const completedChapters = chaptersWithStatus.filter(c => c.status === 'complete').length
-          const inProgressChapters = chaptersWithStatus.filter(c => c.status === 'in_progress').length
-          const notStartedChapters = chaptersWithStatus.filter(c => c.status === 'not_started').length
-          const totalVerses = chaptersWithStatus.reduce((sum, c) => sum + c.total_verses, 0)
-          const versesCovered = chaptersWithStatus.reduce((sum, c) => sum + c.versesCovered, 0)
-          const bookProgress = calculateProgress(versesCovered, totalVerses)
+      // Process books and chapters in memory (no more N+1 queries!)
+      const booksWithProgress: BibleBookWithProgress[] = (booksWithChapters || []).map((book: Book & { chapters?: Chapter[] }) => {
+        // Calculate status for each chapter
+        const chaptersWithStatus: ChapterWithStatus[] = (book.chapters || []).map((chapter: Chapter) => {
+          const mediaFileIds = mediaFilesByChapter.get(chapter.id) || []
+          const hasMediaFiles = mediaFileIds.length > 0
+          
+          // Chapter-level progress - if chapter has any media files, consider it complete
+          const versesCovered = hasMediaFiles ? chapter.total_verses : 0
+          const status = calculateChapterStatus(chapter.total_verses, versesCovered)
+          const progress = calculateProgress(versesCovered, chapter.total_verses)
 
           return {
-            ...book,
-            chapters: chaptersWithStatus,
-            progress: bookProgress,
-            totalChapters,
-            completedChapters,
-            inProgressChapters,
-            notStartedChapters
+            ...chapter,
+            status,
+            progress,
+            mediaFileIds,
+            versesCovered
           }
         })
-      )
+
+        // Calculate book progress
+        const totalChapters = chaptersWithStatus.length
+        const completedChapters = chaptersWithStatus.filter(c => c.status === 'complete').length
+        const inProgressChapters = chaptersWithStatus.filter(c => c.status === 'in_progress').length
+        const notStartedChapters = chaptersWithStatus.filter(c => c.status === 'not_started').length
+        const totalVerses = chaptersWithStatus.reduce((sum, c) => sum + c.total_verses, 0)
+        const versesCovered = chaptersWithStatus.reduce((sum, c) => sum + c.versesCovered, 0)
+        const bookProgress = calculateProgress(versesCovered, totalVerses)
+
+        return {
+          ...book,
+          chapters: chaptersWithStatus,
+          progress: bookProgress,
+          totalChapters,
+          completedChapters,
+          inProgressChapters,
+          notStartedChapters
+        }
+      })
 
       return booksWithProgress
     },
@@ -341,13 +349,26 @@ export function useBibleProjectDashboard(projectId: string | null) {
         throw new Error('No bible versions found in the system')
       }
 
-      // Get books with chapters in a single optimized query
+      // OPTIMIZED: Get books with chapters selecting only needed columns instead of *
       const { data: booksWithChapters, error: booksError } = await supabase
         .from('books')
         .select(`
-          *,
+          id,
+          name,
+          book_number,
+          bible_version_id,
+          global_order,
+          created_at,
+          updated_at,
+          testament,
           chapters (
-            *
+            id,
+            book_id,
+            chapter_number,
+            total_verses,
+            global_order,
+            created_at,
+            updated_at
           )
         `)
         .eq('bible_version_id', bibleVersionId)

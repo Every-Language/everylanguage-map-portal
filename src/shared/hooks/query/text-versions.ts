@@ -13,12 +13,15 @@ export interface VerseTextWithRelations extends Omit<VerseText, 'publish_status'
   verses?: {
     id: string;
     verse_number: number;
+    global_order: number | null;
     chapters?: {
       id: string;
       chapter_number: number;
+      global_order: number | null;
       books?: {
-        name: string;
         id: string;
+        name: string;
+        global_order: number | null;
       };
     };
   };
@@ -69,7 +72,8 @@ export function useTextVersion(id: string | null) {
 
   // VERSE TEXT HOOKS
 
-// Hook to fetch verse texts by project (replaces the generic useVerseTexts)
+// Hook to fetch verse texts by project (DEPRECATED - use useVerseTextsByProjectPaginated instead)
+// @deprecated Use useVerseTextsByProjectPaginated for better performance with large datasets
 export function useVerseTextsByProject(projectId: string | null) {
   return useQuery({
     queryKey: ['verse_texts_by_project', projectId],
@@ -96,15 +100,18 @@ export function useVerseTextsByProject(projectId: string | null) {
             language_entity_id,
             bible_version_id
           ),
-          verses (
+          verses!inner (
             id,
             verse_number,
-            chapters (
+            global_order,
+            chapters!inner (
               id,
               chapter_number,
-              books (
+              global_order,
+              books!inner (
                 id,
-                name
+                name,
+                global_order
               )
             )
           )
@@ -165,12 +172,15 @@ export function useVerseTextsByProjectPaginated(
           verses!inner (
             id,
             verse_number,
+            global_order,
             chapters!inner (
               id,
               chapter_number,
+              global_order,
               books!inner (
                 id,
-                name
+                name,
+                global_order
               )
             )
           )
@@ -229,9 +239,9 @@ export function useVerseTextsByProjectPaginated(
       const sortDirection = options.sortDirection || 'desc'
       
       if (sortField === 'verse_reference') {
-        // For verse reference sorting, sort by created_at for now
-        // Complex nested sorting is not well supported in Supabase PostgREST
-        query = query.order('created_at', { ascending: sortDirection === 'asc' })
+        // Sort by verse_id field on verse_texts table (not the joined verses.id)
+        // This avoids PostgREST limitations with ordering by joined table fields
+        query = query.order('verse_id', { ascending: sortDirection === 'asc' })
       } else {
         query = query.order(sortField, { ascending: sortDirection === 'asc' })
       }
@@ -619,7 +629,7 @@ export function useChunkedBulkInsertVerseTexts() {
       console.log(`🎉 Chunked bulk insert completed: ${results.length} records inserted`)
       return results
     },
-    onSuccess: (data, variables) => {
+    onSuccess: (_, variables) => {
       // Only invalidate specific queries to avoid triggering unrelated subscriptions
       const textVersionId = variables.verseTextsData[0]?.text_version_id
       if (textVersionId) {

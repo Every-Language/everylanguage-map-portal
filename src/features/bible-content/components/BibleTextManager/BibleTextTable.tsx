@@ -198,30 +198,10 @@ export const BibleTextTable: React.FC<BibleTextTableProps> = ({
                     </th>
 
                     <th className="text-left p-3 font-medium text-gray-900 dark:text-gray-100">
-                      <button
-                        onClick={() => handleSort('verse_text')}
-                        className="flex items-center space-x-1 hover:text-blue-600 dark:hover:text-blue-400"
-                      >
-                        <span>Text</span>
-                        {sortField === 'verse_text' && (
-                          <span className="text-blue-600 dark:text-blue-400">
-                            {sortDirection === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
+                      <span>Text</span>
                     </th>
                     <th className="text-left p-3 font-medium text-gray-900 dark:text-gray-100">
-                      <button
-                        onClick={() => handleSort('publish_status')}
-                        className="flex items-center space-x-1 hover:text-blue-600 dark:hover:text-blue-400"
-                      >
-                        <span>Status</span>
-                        {sortField === 'publish_status' && (
-                          <span className="text-blue-600 dark:text-blue-400">
-                            {sortDirection === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
+                      <span>Status</span>
                     </th>
                     <th className="text-left p-3 font-medium text-gray-900 dark:text-gray-100">Actions</th>
                   </tr>

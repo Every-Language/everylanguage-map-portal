@@ -147,7 +147,7 @@ export function useAudioUpload() {
       console.log('🚀 Starting bulk upload with files:', bulkFiles);
       
       // Start the upload through the store (which handles progress tracking)
-      const result = await startBulkUpload(bulkFiles, session.access_token);
+      const result = await startBulkUpload(bulkFiles, session.access_token, selectedProject.id);
       
       console.log('📋 Bulk upload initiated:', result);
 

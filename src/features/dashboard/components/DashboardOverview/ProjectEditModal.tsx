@@ -4,15 +4,13 @@ import {
   DialogContent, 
   DialogHeader, 
   DialogTitle,
-  DialogFooter,
-  Button,
-  Input,
-  LoadingSpinner
-} from '../../../../shared/design-system';
+  DialogFooter
+} from '../../../../shared/design-system/components/Dialog';
+import { Button } from '../../../../shared/design-system/components/Button';
+import { Input } from '../../../../shared/design-system/components/Input';
+import { LoadingSpinner } from '../../../../shared/design-system/components/LoadingSpinner';
 import { FormLabel } from '../../../../shared/design-system/components/Form';
-import { SearchableSelect } from '../../../../shared/design-system/components/Select';
-import { useLanguageEntities } from '../../../../shared/hooks/query/language-entities';
-import { useRegions } from '../../../../shared/hooks/query/regions';
+import { FuzzySearchSelector, type SearchResultItem } from '../../../../shared/components/FuzzySearchSelector';
 import { useUpdateProject } from '../../../../shared/hooks/query/project-mutations';
 import { useSelectedProject } from '../../hooks/useSelectedProject';
 import { useToast } from '../../../../shared/design-system/hooks/useToast';
@@ -24,56 +22,25 @@ interface ProjectEditModalProps {
   project: Project | null;
 }
 
-interface FormData {
-  name: string;
-  description: string;
-  sourceLanguageId: string;
-  targetLanguageId: string;
-  regionId: string;
-}
-
-interface FormErrors {
-  name?: string;
-  description?: string;
-  sourceLanguageId?: string;
-  targetLanguageId?: string;
-  regionId?: string;
-  general?: string;
-}
-
 export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
   isOpen,
   onClose,
   project
 }) => {
-  const [formData, setFormData] = useState<FormData>({
-    name: '',
-    description: '',
-    sourceLanguageId: '',
-    targetLanguageId: '',
-    regionId: ''
-  });
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
   const { setSelectedProject } = useSelectedProject();
   const { toast } = useToast();
   const updateProject = useUpdateProject();
 
-  // Data fetching hooks
-  const { data: languageEntities = [], isLoading: languagesLoading } = useLanguageEntities();
-  const { data: regions = [], isLoading: regionsLoading } = useRegions();
-
-  // Convert data to options for SearchableSelect
-  const languageOptions = languageEntities.map(entity => ({
-    value: entity.id,
-    label: entity.name
-  }));
-
-  const regionOptions = regions.map(region => ({
-    value: region.id,
-    label: region.name
-  }));
+  // Form state
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    sourceLanguage: null as SearchResultItem | null,
+    targetLanguage: null as SearchResultItem | null,
+    region: null as SearchResultItem | null,
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Initialize form data when project changes
   useEffect(() => {
@@ -81,79 +48,72 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
       setFormData({
         name: project.name || '',
         description: project.description || '',
-        sourceLanguageId: project.source_language_entity_id || '',
-        targetLanguageId: project.target_language_entity_id || '',
-        regionId: project.region_id || ''
+        sourceLanguage: null, // Will be populated if needed
+        targetLanguage: null, // Will be populated if needed
+        region: null, // Will be populated if needed
       });
       setErrors({});
     }
   }, [project, isOpen]);
 
   // Form field handlers
-  const handleFieldChange = useCallback((field: keyof FormData, value: string) => {
+  const handleFieldChange = useCallback((field: string, value: string | SearchResultItem | null) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     // Clear error when user starts typing
     if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: undefined }));
+      setErrors(prev => ({ ...prev, [field]: '' }));
     }
   }, [errors]);
 
   // Form validation
   const validateForm = useCallback((): boolean => {
-    const newErrors: FormErrors = {};
+    const newErrors: Record<string, string> = {};
 
     if (!formData.name.trim()) {
       newErrors.name = 'Project name is required';
-    } else if (formData.name.trim().length < 2) {
-      newErrors.name = 'Project name must be at least 2 characters';
-    } else if (formData.name.trim().length > 100) {
-      newErrors.name = 'Project name must be less than 100 characters';
     }
 
-    if (formData.description.trim().length > 500) {
-      newErrors.description = 'Description must be less than 500 characters';
+    if (!formData.description.trim()) {
+      newErrors.description = 'Project description is required';
     }
 
-    if (!formData.sourceLanguageId) {
-      newErrors.sourceLanguageId = 'Source language is required';
+    if (!formData.sourceLanguage) {
+      newErrors.sourceLanguage = 'Source language is required';
     }
 
-    if (!formData.targetLanguageId) {
-      newErrors.targetLanguageId = 'Target language is required';
+    if (!formData.targetLanguage) {
+      newErrors.targetLanguage = 'Target language is required';
     }
 
-    if (formData.sourceLanguageId === formData.targetLanguageId) {
-      newErrors.targetLanguageId = 'Target language must be different from source language';
+    if (formData.sourceLanguage?.id === formData.targetLanguage?.id) {
+      newErrors.targetLanguage = 'Target language must be different from source language';
     }
 
-    if (!formData.regionId) {
-      newErrors.regionId = 'Region is required';
+    if (!formData.region) {
+      newErrors.region = 'Region is required';
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   }, [formData]);
 
-  // Form submission
+  // Submit handler
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!validateForm() || !project) {
-      return;
-    }
+    
+    if (!validateForm() || !project) return;
 
     setIsSubmitting(true);
-    setErrors({});
-
+    
     try {
       const updatedProject = await updateProject.mutateAsync({
         id: project.id,
         updates: {
           name: formData.name.trim(),
           description: formData.description.trim(),
-          source_language_entity_id: formData.sourceLanguageId,
-          target_language_entity_id: formData.targetLanguageId,
-          region_id: formData.regionId,
+          source_language_entity_id: formData.sourceLanguage?.id || '',
+          target_language_entity_id: formData.targetLanguage?.id || '',
+          region_id: formData.region?.id || '',
         }
       });
 
@@ -198,44 +158,41 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit project metadata</DialogTitle>
+          <DialogTitle>Edit Project</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* General Error */}
           {errors.general && (
-            <div className="p-3 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
-              {errors.general}
+            <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
+              <p className="text-sm text-red-600 dark:text-red-400">{errors.general}</p>
             </div>
           )}
 
           {/* Project Name */}
           <div className="space-y-2">
-            <FormLabel htmlFor="name" className="text-neutral-900 dark:text-neutral-100">Name *</FormLabel>
+            <FormLabel className="text-neutral-900 dark:text-neutral-100">Project Name *</FormLabel>
             <Input
-              id="name"
               value={formData.name}
               onChange={(e) => handleFieldChange('name', e.target.value)}
               placeholder="Enter project name"
-              error={errors.name}
               disabled={isSubmitting}
-              className="w-full"
+              className={errors.name ? 'border-red-500' : ''}
             />
             {errors.name && (
               <p className="text-sm text-red-600">{errors.name}</p>
             )}
           </div>
 
-          {/* Description */}
+          {/* Project Description */}
           <div className="space-y-2">
-            <FormLabel htmlFor="description" className="text-neutral-900 dark:text-neutral-100">Description</FormLabel>
-            <textarea
-              id="description"
+            <FormLabel className="text-neutral-900 dark:text-neutral-100">Description *</FormLabel>
+            <Input
               value={formData.description}
               onChange={(e) => handleFieldChange('description', e.target.value)}
               placeholder="Enter project description"
               disabled={isSubmitting}
-              rows={3}
-              className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md shadow-sm placeholder-neutral-400 dark:placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-neutral-800 dark:text-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+              className={errors.description ? 'border-red-500' : ''}
             />
             {errors.description && (
               <p className="text-sm text-red-600">{errors.description}</p>
@@ -243,57 +200,45 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
           </div>
 
           {/* Source Language */}
-          <div className="space-y-2">
-            <FormLabel className="text-neutral-900 dark:text-neutral-100">Source Language *</FormLabel>
-            <SearchableSelect
-              options={languageOptions}
-              value={formData.sourceLanguageId}
-              onValueChange={(value: string) => handleFieldChange('sourceLanguageId', value)}
-              placeholder="Select source language"
-              searchPlaceholder="Search languages..."
-              disabled={isSubmitting || languagesLoading}
-            />
-            {errors.sourceLanguageId && (
-              <p className="text-sm text-red-600">{errors.sourceLanguageId}</p>
-            )}
-          </div>
+          <FuzzySearchSelector
+            label="Source Language"
+            placeholder="Search for source language..."
+            selectedItem={formData.sourceLanguage}
+            onItemSelect={(item) => handleFieldChange('sourceLanguage', item)}
+            onClear={() => handleFieldChange('sourceLanguage', null)}
+            searchType="language"
+            error={errors.sourceLanguage}
+            disabled={isSubmitting}
+          />
 
           {/* Target Language */}
-          <div className="space-y-2">
-            <FormLabel className="text-neutral-900 dark:text-neutral-100">Target Language *</FormLabel>
-            <SearchableSelect
-              options={languageOptions}
-              value={formData.targetLanguageId}
-              onValueChange={(value: string) => handleFieldChange('targetLanguageId', value)}
-              placeholder="Select target language"
-              searchPlaceholder="Search languages..."
-              disabled={isSubmitting || languagesLoading}
-            />
-            {errors.targetLanguageId && (
-              <p className="text-sm text-red-600">{errors.targetLanguageId}</p>
-            )}
-          </div>
+          <FuzzySearchSelector
+            label="Target Language"
+            placeholder="Search for target language..."
+            selectedItem={formData.targetLanguage}
+            onItemSelect={(item) => handleFieldChange('targetLanguage', item)}
+            onClear={() => handleFieldChange('targetLanguage', null)}
+            searchType="language"
+            error={errors.targetLanguage}
+            disabled={isSubmitting}
+          />
 
           {/* Region */}
-          <div className="space-y-2">
-            <FormLabel className="text-neutral-900 dark:text-neutral-100">Region *</FormLabel>
-            <SearchableSelect
-              options={regionOptions}
-              value={formData.regionId}
-              onValueChange={(value: string) => handleFieldChange('regionId', value)}
-              placeholder="Select region"
-              searchPlaceholder="Search regions..."
-              disabled={isSubmitting || regionsLoading}
-            />
-            {errors.regionId && (
-              <p className="text-sm text-red-600">{errors.regionId}</p>
-            )}
-          </div>
+          <FuzzySearchSelector
+            label="Region"
+            placeholder="Search for region..."
+            selectedItem={formData.region}
+            onItemSelect={(item) => handleFieldChange('region', item)}
+            onClear={() => handleFieldChange('region', null)}
+            searchType="region"
+            error={errors.region}
+            disabled={isSubmitting}
+          />
 
-          <DialogFooter className="pt-4">
-            <Button
-              type="button"
-              variant="outline"
+          <DialogFooter>
+            <Button 
+              type="button" 
+              variant="ghost" 
               onClick={handleClose}
               disabled={isSubmitting}
             >
@@ -301,11 +246,11 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting || languagesLoading || regionsLoading}
+              disabled={isSubmitting}
             >
               {isSubmitting ? (
                 <>
-                  <LoadingSpinner size="sm" className="mr-2" />
+                  <LoadingSpinner className="mr-2 h-4 w-4" />
                   Updating...
                 </>
               ) : (
