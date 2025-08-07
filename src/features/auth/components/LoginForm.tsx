@@ -17,7 +17,6 @@ interface LoginFormProps {
 export const LoginForm: React.FC<LoginFormProps> = ({
   onSuccess,
   onForgotPassword,
-  onSignUpRedirect,
 }) => {
   const { signIn } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
@@ -155,7 +154,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         <div>
           <Button
             type="submit"
-            className="w-full bg-gradient-to-r from-accent-600 to-accent-600 hover:from-accent-600 hover:to-accent-700 dark:from-accent-600 dark:to-accent-600 dark:hover:from-accent-500 dark:hover:to-accent-700 text-white shadow-lg"
+            className="w-full bg-gradient-to-r from-accent-600 to-accent-600 hover:from-accent-600 hover:to-accent-700 dark:from-accent-600 dark:to-accent-600 dark:hover:from-accent-700 dark:hover:to-accent-700 text-white shadow-lg"
             disabled={isLoading}
             size="lg"
             loading={isLoading}
@@ -164,22 +163,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           </Button>
         </div>
       </form>
-
-      {onSignUpRedirect && (
-        <div className="text-center">
-          <p className="text-sm text-neutral-600 dark:text-neutral-400">
-            Don't have an account?{' '}
-            <button
-              type="button"
-              onClick={onSignUpRedirect}
-              className="font-medium text-secondary-600 dark:text-secondary-400 hover:text-secondary-700 dark:hover:text-secondary-300 transition-colors"
-              disabled={isLoading}
-            >
-              Sign up
-            </button>
-          </p>
-        </div>
-      )}
     </div>
   );
 }; 

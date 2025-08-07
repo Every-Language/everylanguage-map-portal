@@ -23,6 +23,10 @@ export const Sidebar: React.FC = () => {
     navigate('/login');
   };
 
+  const handleProfileClick = () => {
+    navigate('/profile');
+  };
+
   const handleThemeToggle = () => {
     setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light');
   };
@@ -69,14 +73,17 @@ export const Sidebar: React.FC = () => {
       </SidebarContent>
       
       <SidebarFooter>
-        <div className="flex items-center space-x-3 mb-3">
+        <button 
+          onClick={handleProfileClick}
+          className="flex items-center space-x-3 mb-3 w-full text-left p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors group cursor-pointer"
+        >
           <div className="h-8 w-8 bg-gradient-to-br from-accent-600 to-accent-700 rounded-full flex items-center justify-center">
             <span className="text-white text-sm font-medium">
               {user?.email?.charAt(0).toUpperCase()}
             </span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate group-hover:text-accent-600 dark:group-hover:text-accent-400 transition-colors">
               {dbUser?.first_name && dbUser?.last_name 
                 ? `${dbUser.first_name} ${dbUser.last_name}`
                 : user?.email?.split('@')[0]
@@ -86,7 +93,12 @@ export const Sidebar: React.FC = () => {
               {user?.email}
             </p>
           </div>
-        </div>
+          <div className="text-neutral-400 dark:text-neutral-500 group-hover:text-accent-600 dark:group-hover:text-accent-400 transition-colors">
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        </button>
         
         <div className="flex items-center justify-between">
           <Button 

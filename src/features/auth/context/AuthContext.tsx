@@ -19,6 +19,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     reject: (error: Error) => void
   } | null>(null)
 
+  // Helper function to get database user with retry logic
+  const getDbUserWithRetry = useCallback(async (userId: string): Promise<DbUser | null> => {
+    let retries = 0
+    const maxRetries = 3
+    const retryDelay = 1000
+
+    while (retries < maxRetries) {
+      const dbUser = await authService.getDbUser(userId)
+      if (dbUser) {
+        console.log('Database user found successfully')
+        return dbUser
+      }
+      
+      if (retries < maxRetries - 1) {
+        console.log(`Database user not found, retrying in ${retryDelay}ms... (attempt ${retries + 1}/${maxRetries})`)
+        await new Promise(resolve => setTimeout(resolve, retryDelay))
+      }
+      retries++
+    }
+    
+    console.warn(`Database user not found after ${maxRetries} retries. This might be expected for new signups that require email verification.`)
+    return null
+  }, [])
+
   const refreshUser = useCallback(async () => {
     try {
       const [user, session] = await Promise.all([
@@ -28,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       let dbUser: DbUser | null = null
       if (user) {
-        dbUser = await authService.getDbUser(user.id)
+        dbUser = await getDbUserWithRetry(user.id)
       }
 
       setState({
@@ -46,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading: false,
       })
     }
-  }, [])
+  }, [getDbUserWithRetry])
 
   const signIn = useCallback(async (email: string, password: string) => {
     try {
@@ -76,6 +100,80 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Auth state change will trigger refresh
     } catch (error) {
       console.error('Sign up error:', error)
+      throw error
+    }
+  }, [])
+
+  const signInWithPhone = useCallback(async (phone: string, password: string) => {
+    try {
+      // Create a promise that will be resolved when auth state changes
+      const authStatePromise = new Promise<void>((resolve, reject) => {
+        pendingSignInRef.current = { resolve, reject }
+      })
+
+      // Attempt to sign in with phone and password
+      await authService.signInWithPhone(phone, password)
+
+      // Wait for auth state to be updated before resolving
+      await authStatePromise
+    } catch (error) {
+      // Clean up pending promise if sign in fails
+      if (pendingSignInRef.current) {
+        pendingSignInRef.current = null
+      }
+      console.error('Sign in with phone error:', error)
+      throw error
+    }
+  }, [])
+
+  const requestPhoneOtp = useCallback(async (phone: string) => {
+    try {
+      await authService.requestPhoneOtp(phone)
+      // OTP sent, no auth state change yet - user needs to verify OTP
+    } catch (error) {
+      console.error('Request phone OTP error:', error)
+      throw error
+    }
+  }, [])
+
+  const requestPhoneOtpForSignup = useCallback(async (phone: string, userData?: Partial<DbUser>) => {
+    try {
+      await authService.requestPhoneOtpForSignup(phone, userData)
+      // OTP sent for signup, no auth state change yet - user needs to verify OTP
+    } catch (error) {
+      console.error('Request phone OTP for signup error:', error)
+      throw error
+    }
+  }, [])
+
+  const signUpWithPhone = useCallback(async (phone: string, password: string, userData?: Partial<DbUser>) => {
+    try {
+      await authService.signUpWithPhone(phone, password, userData)
+      // Auth state change will trigger refresh (if no confirmation required)
+    } catch (error) {
+      console.error('Sign up with phone error:', error)
+      throw error
+    }
+  }, [])
+
+  const verifyOtp = useCallback(async (phone: string, token: string, type: 'sms' | 'phone_change' = 'sms') => {
+    try {
+      // Create a promise that will be resolved when auth state changes
+      const authStatePromise = new Promise<void>((resolve, reject) => {
+        pendingSignInRef.current = { resolve, reject }
+      })
+
+      // Verify the OTP
+      await authService.verifyOtp(phone, token, type)
+
+      // Wait for auth state to be updated before resolving
+      await authStatePromise
+    } catch (error) {
+      // Clean up pending promise if verification fails
+      if (pendingSignInRef.current) {
+        pendingSignInRef.current = null
+      }
+      console.error('Verify OTP error:', error)
       throw error
     }
   }, [])
@@ -113,6 +211,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  const updatePhone = useCallback(async (phone: string) => {
+    try {
+      await authService.updatePhone(phone)
+      // This will send an OTP to the new phone number for verification
+    } catch (error) {
+      console.error('Update phone error:', error)
+      throw error
+    }
+  }, [])
+
+  const updateProfile = useCallback(async (profileData: { firstName?: string; lastName?: string; phone?: string }) => {
+    try {
+      await authService.updateProfile(profileData)
+      // Refresh user data to reflect changes
+      await refreshUser()
+    } catch (error) {
+      console.error('Update profile error:', error)
+      throw error
+    }
+  }, [refreshUser])
+
   useEffect(() => {
     // Initial auth state check
     refreshUser()
@@ -123,7 +242,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         let dbUser: DbUser | null = null
         if (user) {
           try {
-            dbUser = await authService.getDbUser(user.id)
+            dbUser = await getDbUserWithRetry(user.id)
           } catch (error) {
             console.error('Error fetching db user:', error)
           }
@@ -152,7 +271,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       subscription?.unsubscribe()
     }
-  }, [refreshUser])
+  }, [refreshUser, getDbUserWithRetry])
 
   const value: AuthContextType = {
     user: state.user,
@@ -161,9 +280,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading: state.loading,
     signIn,
     signUp,
+    signInWithPhone,
+    requestPhoneOtp,
+    requestPhoneOtpForSignup,
+    signUpWithPhone,
+    verifyOtp,
     signOut,
     resetPassword,
     updatePassword,
+    updatePhone,
+    updateProfile,
     refreshUser,
   }
 

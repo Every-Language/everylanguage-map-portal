@@ -21,9 +21,16 @@ export interface AuthContextType {
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string, userData?: Partial<DbUser>) => Promise<void>
+  signInWithPhone: (phone: string, password: string) => Promise<void>
+  requestPhoneOtp: (phone: string) => Promise<void>
+  requestPhoneOtpForSignup: (phone: string, userData?: Partial<DbUser>) => Promise<void>
+  signUpWithPhone: (phone: string, password: string, userData?: Partial<DbUser>) => Promise<void>
+  verifyOtp: (phone: string, token: string, type?: 'sms' | 'phone_change') => Promise<void>
   signOut: () => Promise<void>
   resetPassword: (email: string) => Promise<void>
   updatePassword: (password: string) => Promise<void>
+  updatePhone: (phone: string) => Promise<void>
+  updateProfile: (profileData: { firstName?: string; lastName?: string; phone?: string }) => Promise<void>
   refreshUser: () => Promise<void>
 }
 

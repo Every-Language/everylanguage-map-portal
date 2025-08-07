@@ -21,6 +21,7 @@ const ImagesPage = React.lazy(() => import('./features/image-management/pages').
 const CommunityCheckPage = React.lazy(() => import('./features/community-check').then(module => ({ default: module.CommunityCheckPage })));
 const UsersPage = React.lazy(() => import('./features/user-management/pages').then(module => ({ default: module.UsersPage })));
 const AudioUploadPage = React.lazy(() => import('./features/upload/pages/AudioUploadPage').then(module => ({ default: module.AudioUploadPage })));
+const MyProfilePage = React.lazy(() => import('./app/pages/MyProfilePage').then(module => ({ default: module.MyProfilePage })));
 
 // Helper component to reduce repetition
 const ProtectedLayoutRoute = ({ children }: { children: React.ReactNode }) => (
@@ -56,6 +57,7 @@ function App() {
                 
                 {/* Protected routes with layout */}
                 <Route path="/dashboard" element={<ProtectedLayoutRoute><DashboardPage /></ProtectedLayoutRoute>} />
+                <Route path="/profile" element={<ProtectedLayoutRoute><Suspense fallback={<PageLoadingFallback />}><MyProfilePage /></Suspense></ProtectedLayoutRoute>} />
                 <Route path="/bible-progress" element={<ProtectedLayoutRoute><Suspense fallback={<PageLoadingFallback />}><BibleProgressPage /></Suspense></ProtectedLayoutRoute>} />
                 <Route path="/audio-files" element={<ProtectedLayoutRoute><Suspense fallback={<PageLoadingFallback />}><AudioFilesPage /></Suspense></ProtectedLayoutRoute>} />
                 <Route path="/bible-text" element={<ProtectedLayoutRoute><Suspense fallback={<PageLoadingFallback />}><BibleTextPage /></Suspense></ProtectedLayoutRoute>} />
