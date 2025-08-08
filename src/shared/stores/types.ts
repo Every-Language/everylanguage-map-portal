@@ -26,7 +26,6 @@ export type TargetType = Database['public']['Enums']['target_type']
 // Authentication Store Types
 export interface AuthState {
   user: User | null
-  dbUser: DbUser | null
   session: Session | null
   loading: boolean
   error: string | null
@@ -51,6 +50,7 @@ export interface ProjectState {
   languageEntities: LanguageEntity[]
   regions: Region[]
   bibleVersions: BibleVersion[]
+  selectedBibleVersionId: string | null
   loading: boolean
   error: string | null
 }
@@ -64,6 +64,7 @@ export interface ProjectActions {
   fetchLanguageEntities: () => Promise<void>
   fetchRegions: () => Promise<void>
   fetchBibleVersions: () => Promise<void>
+  setSelectedBibleVersionId: (bibleVersionId: string | null) => void
   clearError: () => void
 }
 

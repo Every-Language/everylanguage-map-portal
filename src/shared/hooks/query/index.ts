@@ -8,6 +8,7 @@ export * from './language-entities'
 export * from './projects'
 export * from './regions'
 export * from './users'
+export * from './user-profile'
 
 // Media Files hooks (primary MediaFile export)
 export * from './media-files'

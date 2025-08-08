@@ -43,7 +43,14 @@ export class AuthService {
 
   /**
    * Get database user information
-   * Note: User records are now automatically created by database trigger
+   * 
+   * DEPRECATED: After schema migration, this is largely unnecessary since user.id = users.id
+   * For most use cases, use user.id directly for created_by fields
+   * Only use this method when you specifically need profile data (first_name, last_name, etc.)
+   * 
+   * RECOMMENDED: Use useUserProfile hook instead for better performance and caching
+   * 
+   * Note: User records are automatically created by database trigger
    */
   async getDbUser(userId: string): Promise<DbUser | null> {
     try {
@@ -52,7 +59,7 @@ export class AuthService {
       const { data, error } = await supabase
         .from('users')
         .select('*')
-        .eq('auth_uid', userId)
+        .eq('id', userId)
         .single()
 
       console.log('DbUser query result:', { data, error })
@@ -422,7 +429,7 @@ export class AuthService {
       const { error: dbError } = await supabase
         .from('users')
         .update(dbUpdateData)
-        .eq('auth_uid', user.id)
+        .eq('id', user.id)
 
       if (dbError) {
         throw dbError

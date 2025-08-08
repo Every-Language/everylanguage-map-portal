@@ -63,6 +63,29 @@ export interface BookWithTextProgress {
   totalVerses: number
 }
 
+// Type for media files with relations for sorting
+interface MediaFileWithRelations extends MediaFile {
+  chapter?: {
+    chapter_number: number
+    book?: { name: string }
+  }
+}
+
+// Type for verse text with relations
+interface VerseTextWithRelations extends VerseText {
+  text_versions?: {
+    name: string
+    language_entity_id: string
+  }
+  verses?: {
+    verse_number: number
+    chapters?: {
+      chapter_number: number
+      books?: { name: string }
+    }
+  }
+}
+
 /**
  * Hook to fetch recent activity for a project
  */
@@ -155,13 +178,15 @@ export function useRecentActivity(projectId: string | null, limit: number = 10) 
         
         if (allMediaFiles) {
           // Sort by updated_at for recent activity
-          mediaFiles = ([...allMediaFiles] as any)
-            .sort((a: any, b: any) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
+          mediaFiles = ([...allMediaFiles] as MediaFileWithRelations[])
+            .sort((a: MediaFileWithRelations, b: MediaFileWithRelations) => 
+              new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
             .slice(0, limit);
           
           // Sort by created_at for recent uploads  
-          recentUploads = ([...allMediaFiles] as any)
-            .sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+          recentUploads = ([...allMediaFiles] as MediaFileWithRelations[])
+            .sort((a: MediaFileWithRelations, b: MediaFileWithRelations) => 
+              new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
             .slice(0, limit);
         }
       }
@@ -171,7 +196,7 @@ export function useRecentActivity(projectId: string | null, limit: number = 10) 
       if (results.length > textResultIndex && project?.target_language_entity_id) {
         const { data: textUpdates, error: textError } = results[textResultIndex];
         if (!textError) {
-          recentTextUpdates = (textUpdates as any) || [];
+          recentTextUpdates = (textUpdates as VerseTextWithRelations[]) || [];
         }
       }
 

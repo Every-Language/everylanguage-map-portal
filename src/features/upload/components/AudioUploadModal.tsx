@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -50,6 +50,16 @@ export function AudioUploadModal({
   const [audioFiles, setAudioFiles] = useState<ProcessedAudioFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
+
+  // Clear files when modal opens/closes to prevent duplication
+  useEffect(() => {
+    console.log('AudioUploadModal: open state changed to:', open, 'current files count:', audioFiles.length);
+    // Always clear files when modal state changes
+    setAudioFiles([]);
+    setCurrentlyPlayingId(null);
+    console.log('AudioUploadModal: Files cleared due to modal state change');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]); // Don't include audioFiles.length to prevent infinite loop
   
   // B2 upload functionality
   const {
@@ -119,8 +129,21 @@ export function AudioUploadModal({
         )
       );
       
-      // Add to existing files
-      setAudioFiles(prev => [...prev, ...processedFiles]);
+      // Add to existing files, but prevent duplicates based on file name and size
+      setAudioFiles(prev => {
+        console.log('AudioUploadModal: Adding files. Previous count:', prev.length, 'New files:', processedFiles.length);
+        
+        // Filter out files that are already in the list (by name and size)
+        const newFiles = processedFiles.filter(newFile => 
+          !prev.some(existingFile => 
+            existingFile.name === newFile.name && 
+            existingFile.size === newFile.size
+          )
+        );
+        
+        console.log('AudioUploadModal: After duplicate filtering, adding:', newFiles.length, 'files');
+        return [...prev, ...newFiles];
+      });
       
       toast({
         title: 'Files processed',

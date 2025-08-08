@@ -14,7 +14,6 @@ interface User {
   email: string;
   first_name?: string | null;
   last_name?: string | null;
-  auth_uid: string;
   phone_number?: string | null;
   created_at: string | null;
   updated_at?: string | null;

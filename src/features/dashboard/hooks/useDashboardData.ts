@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useProjectMetadata } from '../../../shared/hooks/query/dashboard';
-import { useBibleVersions } from '../../../shared/hooks/query/bible-versions';
+import { useBibleVersions } from '../../../shared/stores/project';
 import { supabase } from '../../../shared/services/supabase';
 
 interface ProgressStats {
@@ -35,7 +35,8 @@ export function useDashboardData({ projectId }: DashboardDataProps) {
 
   // Data queries
   const { data: projectMetadata, isLoading: metadataLoading } = useProjectMetadata(projectId);
-  const { data: bibleVersions } = useBibleVersions();
+  // Get basic bible structure data
+  const bibleVersions = useBibleVersions(); // This is now an array directly
   
   // Bible progress calculation (efficient counting instead of fetching all records)
   const { data: progressStats, isLoading: progressLoading } = useQuery<ProgressStats>({

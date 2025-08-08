@@ -21,7 +21,7 @@ import {
   useTextVersionsByProject, 
   useCreateTextVersion
 } from '../../../shared/hooks/query/text-versions';
-import { useBibleVersions } from '../../../shared/hooks/query/bible-versions';
+import { useBibleVersions } from '../../../shared/stores/project';
 import { useChunkedBulkInsertVerseTexts } from '@/shared/hooks/query/text-versions';
 import { useUploadStore } from '@/shared/stores/upload';
 
@@ -88,11 +88,12 @@ export function BibleTextUploadModal({
   onUploadComplete 
 }: BibleTextUploadModalProps) {
   // Data fetching
-  const { user, dbUser } = useAuth();
+  const { user } = useAuth();
   const { selectedProject } = useSelectedProject();
   const { toast } = useToast();
   const { data: textVersions, refetch: refetchTextVersions } = useTextVersionsByProject(selectedProject?.id || '');
-  const { data: bibleVersions } = useBibleVersions();
+  // Get bible versions for dropdowns
+  const bibleVersions = useBibleVersions(); // This is now an array directly
   const createTextVersionMutation = useCreateTextVersion();
   
   // States
@@ -322,7 +323,7 @@ export function BibleTextUploadModal({
 
   // Create text version
   const handleCreateTextVersion = useCallback(async () => {
-    if (!selectedProject || !newTextVersionName.trim() || !selectedBibleVersion || !dbUser) {
+    if (!selectedProject || !newTextVersionName.trim() || !selectedBibleVersion || !user) {
       toast({
         title: 'Missing information',
         description: 'Please fill in all required fields',
@@ -352,7 +353,7 @@ export function BibleTextUploadModal({
         language_entity_id: targetLanguageEntityId,
         bible_version_id: selectedBibleVersion,
         text_version_source: 'user_submitted',
-        created_by: dbUser.id
+        created_by: user.id
       });
 
       toast({
@@ -376,11 +377,11 @@ export function BibleTextUploadModal({
       });
       setIsCreatingTextVersion(false);
     }
-  }, [selectedProject, newTextVersionName, selectedBibleVersion, createTextVersionMutation, dbUser, toast, refetchTextVersions]);
+  }, [selectedProject, newTextVersionName, selectedBibleVersion, createTextVersionMutation, user, toast, refetchTextVersions]);
 
   // Updated upload handler with progress tracking
   const handleUpload = useCallback(async () => {
-    if (!user || !dbUser || !csvData) return;
+    if (!user || !csvData) return;
     
     const validRows = csvData.filter(row => !row.error && row.verse_id);
     
@@ -428,7 +429,7 @@ export function BibleTextUploadModal({
         verse_id: row.verse_id!,
         text_version_id: textVersionId,
         verse_text: row.text,
-        created_by: dbUser.id
+        created_by: user.id
       }));
 
       console.log('Starting chunked upload for:', verseTextsToInsert.length, 'verses');
@@ -464,7 +465,6 @@ export function BibleTextUploadModal({
     }
   }, [
     user, 
-    dbUser, 
     csvData, 
     textVersions, 
     chunkedBulkInsertMutation, 
@@ -527,7 +527,7 @@ export function BibleTextUploadModal({
         {/* Main content area */}
         <div className="min-h-[400px] flex flex-col">
           {/* Check for user authentication */}
-          {!user || !dbUser ? (
+          {!user ? (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center space-y-2">
                 <ExclamationTriangleIcon className="h-12 w-12 text-yellow-500 mx-auto" />

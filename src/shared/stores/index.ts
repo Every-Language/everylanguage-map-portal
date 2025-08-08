@@ -8,14 +8,10 @@ export * from './types';
 // Authentication store
 export {
   useAuthStore,
-  initializeAuth,
   useUser,
-  useDbUser,
   useSession,
   useAuthLoading,
   useAuthError,
-  useIsAuthenticated,
-  useAuthActions,
 } from './auth'
 
 // Project management store
@@ -69,14 +65,13 @@ export const initializeStores = async () => {
     
     // Import initialization functions
     const { initializeTheme } = await import('./ui')
-    const { initializeAuth } = await import('./auth')
     const { initializeProjectStore } = await import('./project')
     
     // Initialize theme system first
     initializeTheme()
     
-    // Initialize authentication
-    initializeAuth()
+    // NOTE: Auth initialization is now handled by AuthContext
+    // No separate initialization needed
     
     // Initialize project store (load reference data)
     await initializeProjectStore()

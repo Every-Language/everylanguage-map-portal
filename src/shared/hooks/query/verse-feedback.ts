@@ -79,16 +79,8 @@ export function useCreateVerseFeedback() {
         throw new Error('User must be authenticated to create feedback');
       }
 
-      // Get the database user using auth_uid
-      const { data: dbUser, error: dbUserError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('auth_uid', user.id)
-        .single();
-
-      if (dbUserError || !dbUser) {
-        throw new Error('User not found in database. Please contact support.');
-      }
+      // OPTIMIZATION: After schema migration, user.id directly equals users.id
+      // No need to fetch dbUser just for the ID
 
       // Get the current highest version for this verse
       const { data: existingFeedback, error: versionError } = await supabase
@@ -109,8 +101,8 @@ export function useCreateVerseFeedback() {
       const insertData: VerseFeedbackInsert = {
         ...feedbackData,
         version: nextVersion,
-        created_by: dbUser.id,
-        updated_by: dbUser.id,
+        created_by: user.id,
+        updated_by: user.id,
         actioned: 'pending'
       };
 
@@ -151,22 +143,14 @@ export function useUpdateVerseFeedback() {
         throw new Error('User must be authenticated to update feedback');
       }
 
-      // Get the database user using auth_uid
-      const { data: dbUser, error: dbUserError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('auth_uid', user.id)
-        .single();
-
-      if (dbUserError || !dbUser) {
-        throw new Error('User not found in database. Please contact support.');
-      }
+      // OPTIMIZATION: After schema migration, user.id directly equals users.id
+      // No need to fetch dbUser just for the ID
 
       const { id, ...updateFields } = updateData;
       
       const updatePayload: VerseFeedbackUpdate = {
         ...updateFields,
-        updated_by: dbUser.id,
+        updated_by: user.id,
         updated_at: new Date().toISOString()
       };
 
@@ -208,16 +192,8 @@ export function useBulkApproveVerses() {
         throw new Error('User must be authenticated to bulk approve verses');
       }
 
-      // Get the database user using auth_uid
-      const { data: dbUser, error: dbUserError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('auth_uid', user.id)
-        .single();
-
-      if (dbUserError || !dbUser) {
-        throw new Error('User not found in database. Please contact support.');
-      }
+      // OPTIMIZATION: After schema migration, user.id directly equals users.id
+      // No need to fetch dbUser just for the ID
 
       const results = [];
       
@@ -245,8 +221,8 @@ export function useBulkApproveVerses() {
           feedback_type: operation.feedbackType,
           feedback_text: operation.feedbackText || null,
           version: nextVersion,
-          created_by: dbUser.id,
-          updated_by: dbUser.id,
+          created_by: user.id,
+          updated_by: user.id,
           actioned: 'pending'
         };
 

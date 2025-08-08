@@ -48,7 +48,7 @@ export const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { dbUser } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
   const createProject = useCreateProject();
 
@@ -123,7 +123,7 @@ export const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
       return;
     }
 
-    if (!dbUser) {
+    if (!user) {
       setErrors({ general: 'You must be logged in to create a project' });
       return;
     }
@@ -138,7 +138,7 @@ export const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
         source_language_entity_id: formData.sourceLanguage!.id,
         target_language_entity_id: formData.targetLanguage!.id,
         region_id: formData.region!.id,
-        created_by: dbUser.id,
+        created_by: user.id,
       });
 
       toast({
@@ -165,7 +165,7 @@ export const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
     } finally {
       setIsSubmitting(false);
     }
-  }, [formData, validateStep, dbUser, createProject, toast, onProjectCreated]);
+  }, [formData, validateStep, user, createProject, toast, onProjectCreated]);
 
   // Render step content
   const renderStepContent = () => {

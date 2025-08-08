@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../auth';
+import { useUserProfileForEditing } from '../../../../shared/hooks/query/user-profile';
 import { Card, Button, Input, Alert } from '../../../../shared/design-system';
 import { CustomPhoneInput } from '../../../auth/components/CustomPhoneInput';
 import { validatePhoneNumber } from '../../../auth/utils/phoneValidation';
@@ -19,7 +20,8 @@ interface PasswordFormData {
 }
 
 export const ProfileManager: React.FC = () => {
-  const { user, dbUser, updatePassword, updateProfile } = useAuth();
+  const { user, updatePassword, updateProfile } = useAuth();
+  const { data: dbUser, isLoading: profileLoading } = useUserProfileForEditing(user?.id || null);
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -95,6 +97,18 @@ export const ProfileManager: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  // Show loading state while fetching profile
+  if (profileLoading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-600 mx-auto mb-2"></div>
+          <p className="text-sm text-neutral-500">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">

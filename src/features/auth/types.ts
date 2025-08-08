@@ -16,7 +16,6 @@ export type UserRole = 'ADMIN' | 'PROJECT_MANAGER' | 'TRANSLATOR' | 'VIEWER'
 // Auth context interface
 export interface AuthContextType {
   user: User | null
-  dbUser: DbUser | null
   session: Session | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
@@ -37,7 +36,6 @@ export interface AuthContextType {
 // Auth state interface
 export interface AuthState {
   user: User | null
-  dbUser: DbUser | null
   session: Session | null
   loading: boolean
 }

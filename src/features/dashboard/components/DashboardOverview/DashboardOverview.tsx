@@ -2,13 +2,15 @@ import React from 'react';
 import { useAuth } from '../../../auth';
 import { useSelectedProject } from '../../hooks/useSelectedProject';
 import { useDashboardData } from '../../hooks/useDashboardData';
+import { useUserDisplayName } from '../../../../shared/hooks/query/user-profile';
 import { ProgressWidgets } from './ProgressWidgets';
 import { RecentActivity } from './RecentActivity';
 import { ProjectInfo } from './ProjectInfo';
 
 export const DashboardOverview: React.FC = () => {
-  const { user, dbUser } = useAuth();
+  const { user } = useAuth();
   const { selectedProject } = useSelectedProject();
+  const displayName = useUserDisplayName(user);
   
   const dashboardData = useDashboardData({ 
     projectId: selectedProject?.id || null 
@@ -37,7 +39,7 @@ export const DashboardOverview: React.FC = () => {
           Dashboard
         </h1>
         <p className="text-neutral-600 dark:text-neutral-400 mt-1">
-          Welcome back, {dbUser?.first_name || user?.email?.split('@')[0]}!
+          Welcome back, {displayName}!
         </p>
       </div>
 

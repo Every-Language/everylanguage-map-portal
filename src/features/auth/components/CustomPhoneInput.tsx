@@ -54,7 +54,7 @@ const getCountryFlag = (countryCode: string): string => {
     AF: '🇦🇫', UZ: '🇺🇿', TJ: '🇹🇯', KG: '🇰🇬', KZ: '🇰🇿', TM: '🇹🇲',
     MN: '🇲🇳', KP: '🇰🇵', LA: '🇱🇦', KH: '🇰🇭', MM: '🇲🇲', NP: '🇳🇵',
     BT: '🇧🇹', MV: '🇲🇻', BN: '🇧🇳', TL: '🇹🇱', TW: '🇹🇼',
-    HK: '🇭🇰', MO: '🇲🇴', AM: '🇦🇲', AZ: '🇦��', GE: '🇬🇪',
+    HK: '🇭🇰', MO: '🇲🇴', AM: '🇦🇲', AZ: '🇦🇽', GE: '🇬🇪',
     
     // American countries
     GT: '🇬🇹', BZ: '🇧🇿', SV: '🇸🇻', HN: '🇭🇳', NI: '🇳🇮', CR: '🇨🇷',
@@ -227,6 +227,7 @@ export const CustomPhoneInput: React.FC<CustomPhoneInputProps> = ({
       // Clear phone number if value is empty
       setPhoneNumber('');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run on mount, don't depend on value
 
   // Update parent when values change (with debouncing to prevent loops)
@@ -238,6 +239,7 @@ export const CustomPhoneInput: React.FC<CustomPhoneInputProps> = ({
     if (fullNumber !== value) {
       onChange(fullNumber || undefined);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCountry, phoneNumber]); // Don't include value or onChange in dependencies
 
   // Handle keyboard navigation in dropdown

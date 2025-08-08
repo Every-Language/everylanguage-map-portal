@@ -15,7 +15,7 @@ import {
   useAudioVersionsByProject,
   useCreateAudioVersion
 } from '../../../shared/hooks/query/audio-versions';
-import { useBibleVersions } from '../../../shared/hooks/query/bible-versions';
+import { useBibleVersions } from '../../../shared/stores/project';
 import {
   useBooks,
   useChaptersByBook,
@@ -118,7 +118,7 @@ export function useAudioFileManagement(projectId: string | null) {
   });
 
   // External dependencies
-  const { dbUser } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
   const { downloadState, downloadFile, clearError } = useDownload();
   const queryClient = useQueryClient();
@@ -148,7 +148,8 @@ export function useAudioFileManagement(projectId: string | null) {
   const totalPages = Math.ceil(totalItems / tableState.itemsPerPage);
   
   const { data: audioVersions, isLoading: audioVersionsLoading, refetch: refetchAudioVersions } = useAudioVersionsByProject(projectId || '');
-  const { data: bibleVersions } = useBibleVersions();
+  // Data fetching for bible versions - use store data directly  
+  const bibleVersions = useBibleVersions(); // This is now an array directly
 
   // Auto-select first audio version if none selected and "all" is currently selected
   useEffect(() => {
@@ -315,7 +316,7 @@ export function useAudioFileManagement(projectId: string | null) {
   }, [updateMediaFile]);
 
   const handleCreateAudioVersion = useCallback(async () => {
-    if (!projectId || !enhancedAudioVersionForm.validateForm() || !dbUser) {
+    if (!projectId || !enhancedAudioVersionForm.validateForm() || !user) {
       toast({
         title: 'Missing information',
         description: 'Please fill in all required fields',
@@ -339,7 +340,7 @@ export function useAudioFileManagement(projectId: string | null) {
         language_entity_id: selectedProject.target_language_entity_id,
         bible_version_id: enhancedAudioVersionForm.data.selectedBibleVersion,
         project_id: projectId,
-        created_by: dbUser.id
+        created_by: user.id
       });
 
       toast({
@@ -359,7 +360,7 @@ export function useAudioFileManagement(projectId: string | null) {
         variant: 'error'
       });
     }
-  }, [projectId, enhancedAudioVersionForm, dbUser, toast, createAudioVersionMutation, modalState, refetchAudioVersions, selectedProject?.target_language_entity_id]);
+  }, [projectId, enhancedAudioVersionForm, user, toast, createAudioVersionMutation, modalState, refetchAudioVersions, selectedProject?.target_language_entity_id]);
 
   const handlePlay = useCallback(async (file: MediaFileWithVerseInfo) => {
     if (!file.remote_path) {

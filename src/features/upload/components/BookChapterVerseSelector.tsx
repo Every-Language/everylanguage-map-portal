@@ -1,15 +1,17 @@
-import { useEffect, useCallback } from 'react';
-import { Select, SelectItem } from '../../../shared/design-system/components';
-import { useBooksByBibleVersion, useChaptersByBook, useVersesByChapter } from '../../../shared/hooks/query/bible-structure';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '../../../shared/services/supabase';
+import React, { useCallback, useEffect } from 'react';
+import { useSelectedBibleVersionId, useFetchBibleVersions } from '../../../shared/stores/project';
+import { 
+  useBooksByBibleVersion, 
+  useChaptersByBook, 
+  useVersesByChapter 
+} from '../../../shared/hooks/query/bible-structure';
+import { Select, SelectItem } from '../../../shared/design-system';
 
 interface BookChapterVerseSelectorProps {
-  projectId: string;
-  selectedBookId?: string;
-  selectedChapterId?: string;
-  selectedStartVerseId?: string;
-  selectedEndVerseId?: string;
+  selectedBookId: string;
+  selectedChapterId: string;
+  selectedStartVerseId: string;
+  selectedEndVerseId: string;
   onBookChange: (bookId: string) => void;
   onChapterChange: (chapterId: string) => void;
   onStartVerseChange: (verseId: string) => void;
@@ -23,7 +25,6 @@ interface BookChapterVerseSelectorProps {
 }
 
 export function BookChapterVerseSelector({
-  projectId,
   selectedBookId,
   selectedChapterId,
   selectedStartVerseId,
@@ -39,33 +40,22 @@ export function BookChapterVerseSelector({
   detectedStartVerse,
   detectedEndVerse
 }: BookChapterVerseSelectorProps) {
-  // Get the first available bible version as fallback (removing text_versions query)
-  const { data: bibleVersionId, isLoading: loadingBibleVersion } = useQuery({
-    queryKey: ['default-bible-version'],
-    queryFn: async () => {
-      // For now, just use the first available bible version
-      // TODO: Later we can add logic to get the project's specific bible version
-      const { data: bibleVersions, error } = await supabase
-        .from('bible_versions')
-        .select('id, name')
-        .order('name')
-        .limit(1);
+  // Use global bible version selection
+  const selectedBibleVersionId = useSelectedBibleVersionId();
+  const fetchBibleVersions = useFetchBibleVersions();
 
-      if (error) {
-        console.error('Error fetching bible versions:', error);
-        return null;
-      }
-
-      return bibleVersions?.[0]?.id || null;
-    },
-    enabled: !!projectId,
-  });
+  // Ensure bible versions are loaded if not already (run only once)
+  useEffect(() => {
+    if (!selectedBibleVersionId) {
+      fetchBibleVersions();
+    }
+  }, [selectedBibleVersionId, fetchBibleVersions]);
 
   // Get books for the bible version
   const { 
     data: books = [], 
     isLoading: loadingBooks 
-  } = useBooksByBibleVersion(bibleVersionId || '');
+  } = useBooksByBibleVersion(selectedBibleVersionId || '');
 
   // Get chapters for selected book
   const { 
@@ -163,7 +153,7 @@ export function BookChapterVerseSelector({
     }
   }, [detectedStartVerse, detectedEndVerse, selectedChapterId, selectedStartVerseId, selectedEndVerseId, verses, handleStartVerseChange, handleEndVerseChange]);
 
-  const isLoading = loadingBibleVersion || loadingBooks || loadingChapters || loadingVerses;
+  const isLoading = loadingBooks || loadingChapters || loadingVerses;
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

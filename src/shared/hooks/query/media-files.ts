@@ -930,24 +930,14 @@ export function useBulkInsertVerseTimestamps() {
         throw new Error('User must be authenticated to upload verse timestamps');
       }
 
-      // Get the user's ID from the users table (required by RLS policy)
-      const { data: dbUser, error: dbUserError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('auth_uid', user.id)
-        .single();
-
-      if (dbUserError || !dbUser) {
-        throw new Error('User record not found in database');
-      }
-
       // Prepare data with correct created_by for RLS policy compliance
+      // Note: After schema migration, user.id equals users.id directly
       const insertData = verseTimestampsData.map(item => ({
         media_file_id: item.media_file_id,
         verse_id: item.verse_id,
         start_time_seconds: parseFloat(item.start_time_seconds.toFixed(2)),
         duration_seconds: parseFloat(item.duration_seconds.toFixed(2)),
-        created_by: dbUser.id, // Use users.id, not auth.uid()
+        created_by: user.id, // Direct use - user.id now equals users.id
       }))
 
       // Use upsert to insert new records or update existing ones on conflict

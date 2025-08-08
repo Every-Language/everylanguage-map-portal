@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../features/auth';
 import { useTheme } from '../../theme';
+import { useUserDisplayName } from '../../hooks/query/user-profile';
 import { 
   Sidebar as SidebarContainer,
   SidebarContent,
@@ -14,9 +15,12 @@ import { SidebarProjectSelector } from './SidebarProjectSelector';
 import { SidebarBibleVersionSelector } from './SidebarBibleVersionSelector';
 
 export const Sidebar: React.FC = () => {
-  const { user, dbUser, signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const { theme, setTheme, resolvedTheme } = useTheme();
   const navigate = useNavigate();
+  
+  // Get user display name efficiently
+  const displayName = useUserDisplayName(user);
 
   const handleSignOut = async () => {
     await signOut();
@@ -84,10 +88,7 @@ export const Sidebar: React.FC = () => {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate group-hover:text-accent-600 dark:group-hover:text-accent-400 transition-colors">
-              {dbUser?.first_name && dbUser?.last_name 
-                ? `${dbUser.first_name} ${dbUser.last_name}`
-                : user?.email?.split('@')[0]
-              }
+              {displayName}
             </p>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
               {user?.email}
@@ -108,7 +109,11 @@ export const Sidebar: React.FC = () => {
             className="text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
             title={`Current theme: ${theme}. Click to cycle through themes.`}
           >
-            {resolvedTheme === 'light' ? (
+            {theme === 'system' ? (
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            ) : resolvedTheme === 'light' ? (
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
               </svg>

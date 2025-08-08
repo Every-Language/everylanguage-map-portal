@@ -66,20 +66,49 @@ const ChapterRow: React.FC<{
         </div>
 
         {/* Progress */}
-        <div className="w-32">
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-neutral-600 dark:text-neutral-400">{chapter.progress}%</span>
-            {chapter.verseCoverage && (
-              <span className="text-neutral-500 dark:text-neutral-500">
-                {chapter.verseCoverage.coveredVerses}/{chapter.verseCoverage.totalVerses}
-              </span>
-            )}
-          </div>
-          <Progress 
-            value={chapter.progress} 
-            color={chapter.status === 'complete' ? 'secondary' : chapter.status === 'in_progress' ? 'primary' : 'primary'} 
-            className="h-2" 
-          />
+        <div className="w-40">
+          {selectedVersionType === 'audio' ? (
+            <>
+              {/* Media files count */}
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-neutral-600 dark:text-neutral-400">
+                  Files: {chapter.mediaFiles.length}
+                </span>
+              </div>
+              <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full mb-2">
+                <div 
+                  className={`h-full rounded-full ${chapter.mediaFiles.length > 0 ? 'bg-secondary-500' : 'bg-transparent'}`}
+                  style={{ width: chapter.mediaFiles.length > 0 ? '100%' : '0%' }}
+                />
+              </div>
+              
+              {/* Verse-level progress */}
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-neutral-600 dark:text-neutral-400">
+                  Verses: {chapter.verseCoverage ? `${chapter.verseCoverage.coveredVerses}/${chapter.verseCoverage.totalVerses}` : '0/0'}
+                </span>
+              </div>
+              <Progress 
+                value={chapter.progress} 
+                color="success"
+                className="h-2" 
+              />
+            </>
+          ) : (
+            <>
+              {/* For text versions, just show verse progress */}
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-neutral-600 dark:text-neutral-400">
+                  Verses: {chapter.verseCoverage ? `${chapter.verseCoverage.coveredVerses}/${chapter.verseCoverage.totalVerses}` : '0/0'}
+                </span>
+              </div>
+              <Progress 
+                value={chapter.progress} 
+                color={chapter.status === 'complete' ? 'secondary' : chapter.status === 'in_progress' ? 'primary' : 'primary'} 
+                className="h-2" 
+              />
+            </>
+          )}
           {chapter.verseCoverage && chapter.verseCoverage.verseRanges.length > 0 && (
             <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
               {chapter.verseCoverage.verseRanges.map((range, idx) => (
@@ -91,7 +120,7 @@ const ChapterRow: React.FC<{
           )}
         </div>
 
-        {/* Media files count */}
+        {/* Media files count / Status indicator */}
         <div className="w-20 text-center">
           {selectedVersionType === 'audio' ? (
             <div className="flex items-center justify-center space-x-1">
@@ -257,15 +286,68 @@ export const BibleProgressTable: React.FC<BibleProgressTableProps> = ({
                     </div>
 
                     {/* Progress */}
-                    <div className="w-32">
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-neutral-600 dark:text-neutral-400">{book.progress}%</span>
-                      </div>
-                      <Progress 
-                        value={book.progress} 
-                        color={book.status === 'complete' ? 'secondary' : book.status === 'in_progress' ? 'primary' : 'primary'} 
-                        className="h-2" 
-                      />
+                    <div className="w-40">
+                      {selectedVersionType === 'audio' ? (
+                        <>
+                          {/* Media files progress (chapters with at least one media file) */}
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-neutral-600 dark:text-neutral-400">
+                              Files: {book.mediaFilesProgress ? Math.round(book.mediaFilesProgress * book.totalChapters / 100) : 0}/{book.totalChapters} chapters
+                            </span>
+                          </div>
+                          <Progress 
+                            value={book.mediaFilesProgress || 0} 
+                            color="secondary"
+                            className="h-2" 
+                          />
+                          
+                          {/* Chapters progress (chapters with all verses having media_files_verses) */}
+                          <div className="flex justify-between text-xs mb-1 mt-2">
+                            <span className="text-neutral-600 dark:text-neutral-400">
+                              Chapters: {Math.round(book.progress * book.totalChapters / 100)}/{book.totalChapters} complete
+                            </span>
+                          </div>
+                          <Progress 
+                            value={book.progress} 
+                            color="success"
+                            className="h-2" 
+                          />
+                        </>
+                      ) : (
+                        <>
+                          {/* For text versions: just show chapter progress */}
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-neutral-600 dark:text-neutral-400">
+                              Chapters: {Math.round(book.progress * book.totalChapters / 100)}/{book.totalChapters} complete
+                            </span>
+                          </div>
+                          <Progress 
+                            value={book.progress} 
+                            color={book.status === 'complete' ? 'secondary' : book.status === 'in_progress' ? 'primary' : 'primary'} 
+                            className="h-2" 
+                          />
+                          
+                          {book.detailedProgressLoaded && (
+                            <>
+                              <div className="flex justify-between text-xs mb-1 mt-2">
+                                <span className="text-neutral-600 dark:text-neutral-400">
+                                  Verses: {book.chapters.reduce((coveredVerses, chapter) => coveredVerses + (chapter.verseCoverage?.coveredVerses || 0), 0)}/{book.chapters.reduce((totalVerses, chapter) => totalVerses + (chapter.verseCoverage?.totalVerses || 0), 0)}
+                                </span>
+                              </div>
+                              <Progress 
+                                value={
+                                  book.chapters.reduce((totalVerses, chapter) => totalVerses + (chapter.verseCoverage?.totalVerses || 0), 0) > 0
+                                    ? (book.chapters.reduce((coveredVerses, chapter) => coveredVerses + (chapter.verseCoverage?.coveredVerses || 0), 0) / 
+                                       book.chapters.reduce((totalVerses, chapter) => totalVerses + (chapter.verseCoverage?.totalVerses || 0), 0)) * 100
+                                    : 0
+                                } 
+                                color="success"
+                                className="h-2" 
+                              />
+                            </>
+                          )}
+                        </>
+                      )}
                     </div>
 
                     {/* Status badge */}
@@ -286,9 +368,9 @@ export const BibleProgressTable: React.FC<BibleProgressTableProps> = ({
                       <div className="flex items-center space-x-4 flex-1">
                         <div className="w-3" /> {/* Status indicator space */}
                         <div className="flex-1">Chapter</div>
-                        <div className="w-32 text-center">Progress</div>
+                        <div className="w-40 text-center">Progress</div>
                         <div className="w-20 text-center">
-                          {selectedVersionType === 'audio' ? 'Files' : 'Text'}
+                          {selectedVersionType === 'audio' ? 'Files' : 'Status'}
                         </div>
                         <div className="w-24 text-center">Status</div>
                       </div>

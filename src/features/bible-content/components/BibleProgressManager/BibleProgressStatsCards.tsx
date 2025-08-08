@@ -13,12 +13,12 @@ export const BibleProgressStatsCards: React.FC<BibleProgressStatsCardsProps> = (
   isLoading
 }) => {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
       {/* Books Progress Card */}
       <MetricCard
         title="Books Progress"
-        value={`${Math.round(progressStats?.booksProgress.percentage || 0)}%`}
-        subtitle={`${progressStats?.booksProgress.completed || 0} of ${progressStats?.booksProgress.total || 0} books`}
+        value={`${progressStats?.booksProgress.completed || 0}/${progressStats?.booksProgress.total || 0}`}
+        subtitle={`${Math.round(progressStats?.booksProgress.percentage || 0)}% complete`}
         color="secondary"
         isLoading={isLoading}
         icon={
@@ -42,8 +42,8 @@ export const BibleProgressStatsCards: React.FC<BibleProgressStatsCardsProps> = (
       {/* Chapters Progress Card */}
       <MetricCard
         title="Chapters Progress"
-        value={`${Math.round(progressStats?.chaptersProgress.percentage || 0)}%`}
-        subtitle={`${progressStats?.chaptersProgress.completed || 0} of ${progressStats?.chaptersProgress.total || 0} chapters`}
+        value={`${progressStats?.chaptersProgress.completed || 0}/${progressStats?.chaptersProgress.total || 0}`}
+        subtitle={`${Math.round(progressStats?.chaptersProgress.percentage || 0)}% complete`}
         color="secondary"
         isLoading={isLoading}
         icon={
@@ -60,6 +60,31 @@ export const BibleProgressStatsCards: React.FC<BibleProgressStatsCardsProps> = (
         <Progress 
           value={progressStats?.chaptersProgress.percentage || 0} 
           color="secondary"
+          className="w-full h-2"
+        />
+      </MetricCard>
+
+      {/* Verses Progress Card */}
+      <MetricCard
+        title="Verses Progress"
+        value={`${progressStats?.versesProgress.completed || 0}/${progressStats?.versesProgress.total || 0}`}
+        subtitle={`${Math.round(progressStats?.versesProgress.percentage || 0)}% complete`}
+        color="green"
+        isLoading={isLoading}
+        icon={
+          <div className="text-right">
+            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+              {progressStats?.versesProgress.completed || 0}
+            </div>
+            <div className="text-xs text-green-500 dark:text-green-300">
+              Complete
+            </div>
+          </div>
+        }
+      >
+        <Progress 
+          value={progressStats?.versesProgress.percentage || 0} 
+          color="success"
           className="w-full h-2"
         />
       </MetricCard>

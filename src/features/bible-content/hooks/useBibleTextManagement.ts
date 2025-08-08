@@ -13,12 +13,13 @@ import {
   type VerseTextWithRelations
 } from '../../../shared/hooks/query/text-versions';
 import { useBooks, useChapters, useVersesByChapter } from '../../../shared/hooks/query/bible-structure';
-import { useBibleVersions } from '../../../shared/hooks/query/bible-versions';
+import { useBibleVersions } from '../../../shared/stores/project';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { useSelectedProject } from '../../dashboard/hooks/useSelectedProject';
 import { useToast } from '../../../shared/design-system/hooks/useToast';
 import { useMemo, useCallback, useState, useEffect } from 'react';
 import type { TextVersionForm } from '../components/BibleTextManager/TextVersionModal';
+import { useSelectedBibleVersionId } from '../../../shared/stores/project';
 
 // Type definitions for the bible text management
 export interface BibleTextFilters {
@@ -46,6 +47,9 @@ export interface BibleTextEditForm extends Record<string, unknown> {
 }
 
 export function useBibleTextManagement(projectId: string | null) {
+  // Get global bible version selection
+  const selectedBibleVersionId = useSelectedBibleVersionId();
+
   // Core data table state management
   const tableState = useDataTableState({
     initialFilters: {
@@ -89,7 +93,7 @@ export function useBibleTextManagement(projectId: string | null) {
   const textVersionForm = useFormState<TextVersionForm>({
     initialData: {
       name: '',
-      selectedBibleVersion: ''
+      selectedBibleVersion: selectedBibleVersionId || ''  // Use global selected bible version
     },
     validationRules: [
       { field: 'name', required: true, minLength: 1 },
@@ -97,8 +101,16 @@ export function useBibleTextManagement(projectId: string | null) {
     ]
   });
 
+  // Update form when global bible version changes (only if form field is empty)
+  useEffect(() => {
+    if (selectedBibleVersionId && !textVersionForm.data.selectedBibleVersion) {
+      textVersionForm.setFieldValue('selectedBibleVersion', selectedBibleVersionId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBibleVersionId]); // Remove textVersionForm from dependencies to prevent infinite loop
+
   // External dependencies
-  const { dbUser } = useAuth();
+  const { user } = useAuth();
   const { selectedProject } = useSelectedProject();
   const { toast } = useToast();
 
@@ -125,7 +137,8 @@ export function useBibleTextManagement(projectId: string | null) {
   const totalItems = paginatedResult?.count || 0;
   const totalPages = Math.ceil(totalItems / tableState.itemsPerPage);
   const { data: textVersions, isLoading: textVersionsLoading, refetch: refetchTextVersions } = useTextVersionsByProject(projectId || '');
-  const { data: bibleVersions } = useBibleVersions();
+  // Data fetching for bible versions - use store data directly
+  const bibleVersions = useBibleVersions(); // This is now an array directly
   const { data: books, isLoading: booksLoading } = useBooks();
   const { data: allChapters, isLoading: chaptersLoading } = useChapters();
   const { data: chapterVerses } = useVersesByChapter(editForm.data.chapterId || null);
@@ -443,7 +456,7 @@ export function useBibleTextManagement(projectId: string | null) {
 
   // Text version creation handler
   const handleCreateTextVersion = useCallback(async () => {
-    if (!projectId || !enhancedTextVersionForm.validateForm() || !dbUser) {
+    if (!projectId || !enhancedTextVersionForm.validateForm() || !user) {
       toast({
         title: 'Missing information',
         description: 'Please fill in all required fields',
@@ -467,7 +480,7 @@ export function useBibleTextManagement(projectId: string | null) {
         language_entity_id: selectedProject.target_language_entity_id,
         bible_version_id: enhancedTextVersionForm.data.selectedBibleVersion,
         text_version_source: 'user_submitted',
-        created_by: dbUser.id
+        created_by: user.id
       });
 
       toast({
@@ -487,7 +500,7 @@ export function useBibleTextManagement(projectId: string | null) {
         variant: 'error'
       });
     }
-  }, [projectId, enhancedTextVersionForm, dbUser, toast, createTextVersionMutation, selectedProject, modalState, refetchTextVersions]);
+  }, [projectId, enhancedTextVersionForm, user, toast, createTextVersionMutation, selectedProject, modalState, refetchTextVersions]);
 
   // Computed properties for selection state (based on current page)
   const allCurrentPageSelected = filteredAndSortedTexts.length > 0 && 

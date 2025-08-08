@@ -9,7 +9,7 @@ import type { ProcessedAudioFile } from '@/shared/services/audioFileProcessor';
 
 export function useB2AudioUpload() {
   const { selectedProject } = useSelectedProject();
-  const { dbUser } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
   const { addOptimisticUploads, removeOptimisticUploads } = useOptimisticMediaFileUpdates();
   const queryClient = useQueryClient();
@@ -120,7 +120,7 @@ export function useB2AudioUpload() {
         return;
       }
 
-      if (!dbUser?.id) {
+      if (!user?.id) {
         toast({
           title: 'Authentication required',
           description: 'Please log in to upload files',
@@ -164,7 +164,7 @@ export function useB2AudioUpload() {
         };
 
         // Start the upload asynchronously (don't await here)
-        startUpload(validFiles, projectData, dbUser.id, queryClient, selectedProject.id).catch((error) => {
+        startUpload(validFiles, projectData, user.id, queryClient, selectedProject.id).catch((error) => {
           console.error('❌ Upload error:', error);
           
           // Remove optimistic uploads on error
@@ -206,7 +206,7 @@ export function useB2AudioUpload() {
         throw error;
       }
     },
-    [selectedProject, dbUser, startUpload, addOptimisticUploads, removeOptimisticUploads, toast, queryClient]
+    [selectedProject, user, startUpload, addOptimisticUploads, removeOptimisticUploads, toast, queryClient]
   );
 
   const handleCancelUpload = useCallback(() => {
