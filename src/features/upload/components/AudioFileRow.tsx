@@ -7,7 +7,6 @@ import type { ProcessedAudioFile } from '../../../shared/services/audioFileProce
 
 interface AudioFileRowProps {
   file: ProcessedAudioFile;
-  projectId: string;
   isPlaying: boolean;
   onPlay: () => void;
   onPause: () => void;
@@ -20,7 +19,6 @@ interface AudioFileRowProps {
 
 export function AudioFileRow({
   file,
-  projectId,
   isPlaying,
   onPlay,
   onPause,
@@ -123,7 +121,6 @@ export function AudioFileRow({
           Bible Reference
         </h5>
         <BookChapterVerseSelector
-          projectId={projectId}
           selectedBookId={file.selectedBookId}
           selectedChapterId={file.selectedChapterId}
           selectedStartVerseId={file.selectedStartVerseId}

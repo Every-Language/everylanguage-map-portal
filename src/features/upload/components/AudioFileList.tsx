@@ -4,7 +4,6 @@ import { type ProcessedAudioFile } from '../../../shared/services/audioFileProce
 
 interface AudioFileListProps {
   audioFiles: ProcessedAudioFile[];
-  projectId: string;
   selectedFileForPreview: string | null;
   isUploading: boolean;
   filesReadyForUpload: number;
@@ -19,7 +18,6 @@ interface AudioFileListProps {
 
 export function AudioFileList({
   audioFiles,
-  projectId,
   selectedFileForPreview,
   isUploading,
   filesReadyForUpload,
@@ -79,7 +77,6 @@ export function AudioFileList({
               <AudioFileItem
                 key={file.id}
                 file={file}
-                projectId={projectId}
                 selectedFileForPreview={selectedFileForPreview}
                 isUploading={isUploading}
                 onPreviewToggle={onPreviewToggle}

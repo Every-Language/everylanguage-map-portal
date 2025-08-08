@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useSelectedBibleVersionId, useFetchBibleVersions } from '../../../shared/stores/project';
 import { 
   useBooksByBibleVersion, 
@@ -8,10 +8,10 @@ import {
 import { Select, SelectItem } from '../../../shared/design-system';
 
 interface BookChapterVerseSelectorProps {
-  selectedBookId: string;
-  selectedChapterId: string;
-  selectedStartVerseId: string;
-  selectedEndVerseId: string;
+  selectedBookId?: string;
+  selectedChapterId?: string;
+  selectedStartVerseId?: string;
+  selectedEndVerseId?: string;
   onBookChange: (bookId: string) => void;
   onChapterChange: (chapterId: string) => void;
   onStartVerseChange: (verseId: string) => void;

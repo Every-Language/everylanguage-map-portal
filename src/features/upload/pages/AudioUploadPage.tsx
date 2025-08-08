@@ -117,7 +117,6 @@ export function AudioUploadPage() {
           {selectedProject && (
             <AudioFileList
               audioFiles={audioFiles}
-              projectId={selectedProject.id}
               selectedFileForPreview={selectedFileForPreview}
               isUploading={isUploading}
               filesReadyForUpload={filesReadyForUpload}

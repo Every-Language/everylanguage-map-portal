@@ -6,7 +6,6 @@ import { formatFileSize, formatDuration } from '../utils/audioUploadUtils';
 
 interface AudioFileItemProps {
   file: ProcessedAudioFile;
-  projectId: string;
   selectedFileForPreview: string | null;
   isUploading: boolean;
   onPreviewToggle: (fileId: string | null) => void;
@@ -16,7 +15,6 @@ interface AudioFileItemProps {
 
 export function AudioFileItem({
   file,
-  projectId,
   selectedFileForPreview,
   isUploading,
   onPreviewToggle,
@@ -105,7 +103,6 @@ export function AudioFileItem({
               Book, Chapter & Verse Selection
             </h5>
             <BookChapterVerseSelector
-              projectId={projectId}
               selectedBookId={file.selectedBookId}
               selectedChapterId={file.selectedChapterId}
               selectedStartVerseId={file.selectedStartVerseId}

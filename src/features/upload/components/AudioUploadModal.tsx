@@ -311,7 +311,6 @@ export function AudioUploadModal({
                                          <AudioFileRow
                        key={file.id}
                        file={file}
-                       projectId={selectedProject?.id || ''}
                        isPlaying={currentlyPlayingId === file.id}
                        onPlay={() => setCurrentlyPlayingId(file.id)}
                        onPause={() => setCurrentlyPlayingId(null)}
