@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Search, Clock, Plus } from 'lucide-react';
-import { useProjects } from '../../hooks/query/projects';
+import { useProjectsByUser } from '../../hooks/query/projects';
 import { useLanguageEntitiesByIds } from '../../hooks/query/language-entities';
+import { useAuth } from '../../../features/auth/hooks/useAuth';
 import { 
   Dialog,
   DialogContent,
@@ -43,8 +44,9 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
   const [currentlySelected, setCurrentlySelected] = useState<Project | null>(selectedProject);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
-  // Fetch projects and language entities
-  const { data: projects = [], isLoading, error } = useProjects();
+  // Get current user and fetch their projects only
+  const { user } = useAuth();
+  const { data: projects = [], isLoading, error } = useProjectsByUser(user?.id || null);
   
   // Extract unique language entity IDs from projects
   const languageIds = useMemo(() => {

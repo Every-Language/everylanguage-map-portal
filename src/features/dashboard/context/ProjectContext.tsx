@@ -1,6 +1,7 @@
-import React, { createContext, useState, useCallback, useEffect } from 'react'
+import React, { createContext, useState, useCallback, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { type Project } from '../../../shared/hooks/query/projects'
+import { useAuth } from '../../auth/hooks/useAuth'
 
 export interface ProjectContextValue {
   selectedProject: Project | null
@@ -20,6 +21,8 @@ interface ProjectProviderProps {
 
 export const ProjectProvider: React.FC<ProjectProviderProps> = ({ children }) => {
   const [selectedProject, setSelectedProjectState] = useState<Project | null>(null)
+  const { user } = useAuth()
+  const prevUserIdRef = useRef<string | null>(null)
 
   // Load selected project from localStorage on mount
   useEffect(() => {
@@ -34,6 +37,43 @@ export const ProjectProvider: React.FC<ProjectProviderProps> = ({ children }) =>
       localStorage.removeItem(SELECTED_PROJECT_STORAGE_KEY)
     }
   }, [])
+
+  // Clear selection whenever the authenticated user ID changes (logout/login)
+  useEffect(() => {
+    const currentUserId = user?.id ?? null
+    const prevUserId = prevUserIdRef.current
+
+    if (prevUserId !== currentUserId) {
+      // If user changed (includes logout), clear selection
+      if (selectedProject) {
+        setSelectedProjectState(null)
+        try {
+          localStorage.removeItem(SELECTED_PROJECT_STORAGE_KEY)
+        } catch (err) {
+          console.warn('Failed to remove selected project from localStorage:', err)
+        }
+      }
+      prevUserIdRef.current = currentUserId
+    }
+  }, [user, selectedProject])
+
+  // Clear or validate selected project when user changes (logout/login as another user)
+  useEffect(() => {
+    // On logout, always clear (handled above as well)
+    if (!user) {
+      return
+    }
+
+    // If a project is selected but doesn't belong to the current user, clear it
+    if (selectedProject && selectedProject.created_by && selectedProject.created_by !== user.id) {
+      setSelectedProjectState(null)
+      try {
+        localStorage.removeItem(SELECTED_PROJECT_STORAGE_KEY)
+      } catch (err) {
+        console.warn('Failed to remove selected project from localStorage:', err)
+      }
+    }
+  }, [user, selectedProject])
 
   const setSelectedProject = useCallback((project: Project | null) => {
     setSelectedProjectState(project)
