@@ -89,11 +89,19 @@ export function useVerseMarking() {
     }) => {
       console.log('Saving verses for media file:', mediaFileId, verses);
 
+      // Ensure user is authenticated for RLS policies
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
       // Step 1: Always delete all existing verse markings for this media file first
       const { error: deleteError } = await supabase
         .from('media_files_verses')
         .delete()
-        .eq('media_file_id', mediaFileId);
+        .eq('media_file_id', mediaFileId)
+        // Restrict delete to rows created by current user to satisfy RLS
+        .eq('created_by', user.id);
 
       if (deleteError) {
         console.error('Error deleting existing verses:', deleteError);
@@ -182,6 +190,8 @@ export function useVerseMarking() {
           verse_id: targetVerse.id,
           start_time_seconds: parseFloat(item.verse.timestamp.toFixed(2)),
           duration_seconds: parseFloat(item.duration.toFixed(2)),
+          // Required by RLS WITH CHECK (created_by = auth.uid())
+          created_by: user.id,
         };
       });
 
@@ -282,7 +292,13 @@ export function useVerseMarking() {
     setCurrentMediaFile(null);
     setAudioUrl(null);
     setIsLoadingAudio(false);
-  }, []);
+    // Refresh audio files table and related queries when closing modal
+    queryClient.invalidateQueries({ queryKey: ['media_files_by_project_paginated'] });
+    queryClient.invalidateQueries({ queryKey: ['media_files_with_verse_info'] });
+    // Proactively refetch to update the UI immediately
+    queryClient.refetchQueries({ queryKey: ['media_files_by_project_paginated'] });
+    queryClient.refetchQueries({ queryKey: ['media_files_with_verse_info'] });
+  }, [queryClient]);
 
   // Save verses function
   const saveVerses = useCallback(async (verses: TempVerse[], totalAudioDuration: number) => {
