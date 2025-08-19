@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../auth';
 import { imageService } from '../../../shared/services/imageService';
@@ -62,6 +62,41 @@ export function useImageManagement() {
     enabled: !!user
   });
 
+  // Signed URL map for images
+  const [imageUrlMap, setImageUrlMap] = useState<Record<string, string>>({});
+
+  // Memoize image IDs to prevent unnecessary effect runs
+  const imageIds = useMemo(() => {
+    return images?.map((img: Image) => img.id) || [];
+  }, [images]);
+
+  // Fetch signed URLs for current images using by-id function
+  useEffect(() => {
+    const fetchSignedUrls = async () => {
+      if (imageIds.length === 0) {
+        // Only update if the current map is not empty to avoid unnecessary state updates
+        setImageUrlMap(prevMap => Object.keys(prevMap).length > 0 ? {} : prevMap);
+        return;
+      }
+
+      try {
+        const { DownloadService } = await import('../../../shared/services/downloadService');
+        const service = new DownloadService();
+        const result = await service.getDownloadUrlsById({ imageIds });
+        if (result.success && result.images) {
+          setImageUrlMap(result.images);
+        } else {
+          setImageUrlMap({});
+        }
+      } catch (err) {
+        console.error('Failed to get signed image URLs:', err);
+        setImageUrlMap({});
+      }
+    };
+
+    fetchSignedUrls();
+  }, [imageIds]);
+
   // Mutations
   const createImageSetMutation = useMutation({
     mutationFn: ({ name }: { name: string }) =>
@@ -105,19 +140,29 @@ export function useImageManagement() {
 
   // Filter images
   const filteredImages = useMemo(() => {
+    if (!images) return [];
+    
     return images.filter((image: Image) => {
-      // Filter by search text
-      const matchesSearch = !filters.searchText || 
-        image.remote_path.toLowerCase().includes(filters.searchText.toLowerCase());
-        
+      const haystack = `${image.id} ${image.target_type} ${image.set_id || ''}`.toLowerCase();
+      const matchesSearch = !filters.searchText || haystack.includes(filters.searchText.toLowerCase());
       return matchesSearch;
     });
-  }, [images, filters]);
+  }, [images, filters.searchText]);
 
   // Selection management
-  const allCurrentPageSelected = filteredImages.length > 0 && 
-    filteredImages.every(image => selectedImages.includes(image.id));
-  const someCurrentPageSelected = filteredImages.some(image => selectedImages.includes(image.id));
+  const { allCurrentPageSelected, someCurrentPageSelected } = useMemo(() => {
+    if (filteredImages.length === 0) {
+      return { allCurrentPageSelected: false, someCurrentPageSelected: false };
+    }
+    
+    const allSelected = filteredImages.every(image => selectedImages.includes(image.id));
+    const someSelected = filteredImages.some(image => selectedImages.includes(image.id));
+    
+    return { 
+      allCurrentPageSelected: allSelected, 
+      someCurrentPageSelected: someSelected 
+    };
+  }, [filteredImages, selectedImages]);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -223,6 +268,10 @@ export function useImageManagement() {
     return remotePath.split('/').pop() || remotePath;
   };
 
+  const getImageUrl = (imageId: string, fallbackRemotePath: string): string => {
+    return imageUrlMap[imageId] || fallbackRemotePath;
+  };
+
   const getTargetDisplayName = (image: Image): string => {
     return `${image.target_type}: ${image.target_id}`;
   };
@@ -315,7 +364,8 @@ export function useImageManagement() {
     utils: {
       getFilenameFromPath,
       getTargetDisplayName,
-      getSetName
+      getSetName,
+      getImageUrl
     },
     
     // User state

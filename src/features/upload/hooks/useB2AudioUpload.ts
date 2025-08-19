@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/shared/design-system/hooks/useToast';
-import { useB2UploadStore } from '@/shared/stores/b2Upload';
+import { useB2UploadStore } from '@/shared/stores/mediaFileUpload';
 import { useSelectedProject } from '@/features/dashboard/hooks/useSelectedProject';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useOptimisticMediaFileUpdates } from '@/shared/hooks/query/media-files';
@@ -64,7 +64,7 @@ export function useB2AudioUpload() {
       }
     };
 
-    const handleBatchComplete = (batchProgress: import('@/shared/services/b2DirectUploadService').UploadBatchProgress) => {
+    const handleBatchComplete = (batchProgress: import('@/shared/services/directUploadService').UploadBatchProgress) => {
       console.log('📊 Batch completed:', batchProgress);
       // Additional batch completion logic can be added here
     };

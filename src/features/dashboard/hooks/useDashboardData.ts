@@ -154,7 +154,7 @@ export function useDashboardData({ projectId }: DashboardDataProps) {
 
       let mediaFiles: Array<{
         id: string;
-        remote_path: string | null;
+        object_key: string | null;
         check_status: string | null;
         upload_status: string | null;
         created_at: string | null;
@@ -176,7 +176,7 @@ export function useDashboardData({ projectId }: DashboardDataProps) {
           .from('media_files')
           .select(`
             id,
-            remote_path,
+            object_key,
             check_status,
             upload_status,
             created_at,
@@ -210,9 +210,7 @@ export function useDashboardData({ projectId }: DashboardDataProps) {
         } else {
           // Transform the data to include verse reference
           mediaFiles = (mediaFilesData || []).map(file => {
-            const filename = file.remote_path ? 
-              file.remote_path.split('/').pop()?.replace(/\.[^/.]+$/, '') || 'Audio File' : 
-              'Audio File';
+            const filename = file.object_key?.replace(/\.[^/.]+$/, '') || 'Audio File';
 
             let verse_reference = 'Unknown Reference';
             
@@ -264,7 +262,7 @@ export function useDashboardData({ projectId }: DashboardDataProps) {
 
     interface MediaFileSimple {
       id: string;
-      remote_path: string | null;
+      object_key: string | null;
       check_status: string | null;
       upload_status: string | null;
       created_at: string | null;

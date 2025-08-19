@@ -12,7 +12,6 @@ export interface MediaFileWithVerseInfo {
   publish_status: 'pending' | 'published' | 'archived';
   audio_version_id: string;
   project_id?: string;
-  remote_path?: string;
   duration_seconds?: number;
   created_at?: string;
   updated_at?: string;

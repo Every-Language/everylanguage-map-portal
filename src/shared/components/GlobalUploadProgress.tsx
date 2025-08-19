@@ -1,4 +1,4 @@
-import { useB2UploadStore } from '../stores/b2Upload';
+import { useB2UploadStore } from '../stores/mediaFileUpload';
 import { UploadProgressToast } from './UploadProgressToast';
 
 export function GlobalUploadProgress() {

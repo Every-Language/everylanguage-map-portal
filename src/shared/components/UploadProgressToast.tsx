@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Progress, Button, Card } from '../design-system/components';
 import { XMarkIcon, ChevronUpIcon, ChevronDownIcon, ExclamationTriangleIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
-import type { UploadBatchProgress, UploadFileProgress } from '../services/b2DirectUploadService';
+import type { UploadBatchProgress, UploadFileProgress } from '../services/directUploadService';
 import { cn } from '../design-system/utils';
 
 interface UploadProgressToastProps {

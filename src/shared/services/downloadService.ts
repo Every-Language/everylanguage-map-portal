@@ -1,5 +1,8 @@
 import { supabase } from './supabase';
 
+/**
+ * @deprecated Legacy interface for old download API. Use DownloadUrlByIdResponse instead.
+ */
 export interface DownloadUrlResponse {
   success: boolean;
   urls: Record<string, string>;
@@ -26,110 +29,49 @@ export class DownloadService {
   }
 
   /**
-   * Get presigned download URLs for the given file paths
+   * @deprecated Legacy method removed. Use getDownloadUrlsById instead.
    */
-  async getDownloadUrls(
-    filePaths: string[], 
-    options: DownloadOptions = {}
-  ): Promise<DownloadUrlResponse> {
-    const { expirationHours = 24 } = options;
+  async getDownloadUrls(): Promise<DownloadUrlResponse> {
+    throw new Error('getDownloadUrls is deprecated. Use getDownloadUrlsById instead.');
+  }
 
-    try {
-      // Get the current session for authentication
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('No authentication session found');
-      }
+  /**
+   * Get presigned download URLs by media/image IDs (new by-id API)
+   */
+  async getDownloadUrlsById(
+    params: { mediaFileIds?: string[]; imageIds?: string[]; expirationHours?: number }
+  ): Promise<{ success: boolean; expiresIn: number; media?: Record<string, string>; images?: Record<string, string>; errors?: Record<string, string> }> {
+    const { mediaFileIds = [], imageIds = [], expirationHours = 24 } = params;
 
-      // Extract filenames from full URLs if needed
-      const processedFilePaths = filePaths.map(filePath => {
-        // If it's a full URL, extract just the filename
-        if (filePath.startsWith('https://') || filePath.startsWith('http://')) {
-          const filename = filePath.split('/').pop() || filePath;
-          console.log(`Extracted filename "${filename}" from URL "${filePath}"`);
-          return filename;
-        }
-        return filePath;
-      });
-
-      console.log('Requesting download URLs for files:', processedFilePaths);
-
-      // Call the edge function
-      const response = await fetch(`${this.supabaseUrl}/functions/v1/get-download-urls`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          filePaths: processedFilePaths,
-          expirationHours,
-        }),
-      });
-
-      console.log('Edge function response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Edge function error response:', errorText);
-        
-        let errorMessage = `HTTP ${response.status}`;
-        
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.error || errorData.details || `HTTP ${response.status}: ${response.statusText}`;
-          console.error('Parsed error data:', errorData);
-        } catch {
-          // If JSON parsing fails, use the raw text
-          if (errorText) {
-            errorMessage = `HTTP ${response.status}: ${errorText}`;
-          } else {
-            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-          }
-        }
-        
-        throw new Error(errorMessage);
-      }
-
-      const result: DownloadUrlResponse = await response.json();
-      console.log('Successfully got download URLs:', result);
-      
-      // Map the response back to original file paths if we had full URLs
-      if (processedFilePaths.some((path, index) => path !== filePaths[index])) {
-        const mappedUrls: Record<string, string> = {};
-        const mappedErrors: Record<string, string> = {};
-        const mappedFailedFiles: string[] = [];
-        
-        filePaths.forEach((originalPath, index) => {
-          const processedPath = processedFilePaths[index];
-          
-          if (result.urls[processedPath]) {
-            mappedUrls[originalPath] = result.urls[processedPath];
-          }
-          
-          if (result.errors && result.errors[processedPath]) {
-            mappedErrors[originalPath] = result.errors[processedPath];
-          }
-          
-          if (result.failedFiles && result.failedFiles.includes(processedPath)) {
-            mappedFailedFiles.push(originalPath);
-          }
-        });
-        
-        return {
-          ...result,
-          urls: mappedUrls,
-          errors: mappedErrors,
-          failedFiles: mappedFailedFiles
-        };
-      }
-      
-      return result;
-
-    } catch (error) {
-      console.error('Failed to get download URLs:', error);
-      throw error instanceof Error ? error : new Error('Unknown error getting download URLs');
+    if (mediaFileIds.length === 0 && imageIds.length === 0) {
+      throw new Error('Provide at least one mediaFileId or imageId');
     }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('No authentication session found');
+    }
+
+    const response = await fetch(`${this.supabaseUrl}/functions/v1/get-download-urls-by-id`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ mediaFileIds, imageIds, expirationHours })
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      try {
+        const err = JSON.parse(text);
+        throw new Error(err.error || `HTTP ${response.status}: ${response.statusText}`);
+      } catch {
+        throw new Error(text || `HTTP ${response.status}: ${response.statusText}`);
+      }
+    }
+
+    return await response.json();
   }
 
   /**
@@ -217,24 +159,22 @@ export class DownloadService {
    * Download a single audio file (convenience method)
    */
   async downloadAudioFile(
-    remotePath: string,
+    mediaFileId: string,
     filename: string,
     options: DownloadOptions = {}
   ): Promise<void> {
     try {
       options.onProgress?.(5);
 
-      // Get the presigned URL
-      const urlResponse = await this.getDownloadUrls([remotePath], options);
-      
-      if (!urlResponse.success || !urlResponse.urls[remotePath]) {
-        const error = urlResponse.errors?.[remotePath] || 'Failed to get download URL';
+      // Get the presigned URL by ID
+      const byId = await this.getDownloadUrlsById({ mediaFileIds: [mediaFileId], expirationHours: options.expirationHours });
+      const signedUrl = byId.media?.[mediaFileId];
+      if (!byId.success || !signedUrl) {
+        const error = byId.errors?.[mediaFileId] || 'Failed to get download URL';
         throw new Error(error);
       }
 
       options.onProgress?.(15);
-
-      const signedUrl = urlResponse.urls[remotePath];
       
       // Try the blob download approach first
       try {
@@ -280,59 +220,10 @@ export class DownloadService {
   }
 
   /**
-   * Download multiple files in batch (future enhancement)
+   * @deprecated Batch download method removed. Implement using getDownloadUrlsById if needed.
    */
-  async downloadBatch(
-    files: Array<{ remotePath: string; filename: string }>,
-    options: DownloadOptions = {}
-  ): Promise<{ successful: number; failed: number; errors: string[] }> {
-    const filePaths = files.map(f => f.remotePath);
-    const errors: string[] = [];
-    let successful = 0;
-    let failed = 0;
-
-    try {
-      // Get all presigned URLs at once
-      const urlResponse = await this.getDownloadUrls(filePaths, options);
-      
-      if (!urlResponse.success) {
-        throw new Error('Failed to get any download URLs');
-      }
-
-      // Download each file sequentially (could be made parallel if needed)
-      for (const file of files) {
-        try {
-          const signedUrl = urlResponse.urls[file.remotePath];
-          
-          if (!signedUrl) {
-            const error = urlResponse.errors?.[file.remotePath] || 'No URL available';
-            errors.push(`${file.filename}: ${error}`);
-            failed++;
-            continue;
-          }
-
-          await this.downloadFile(signedUrl, file.filename, options);
-          successful++;
-
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          errors.push(`${file.filename}: ${errorMessage}`);
-          failed++;
-        }
-      }
-
-      return { successful, failed, errors };
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      errors.push(`Batch download failed: ${errorMessage}`);
-      
-      return { 
-        successful: 0, 
-        failed: files.length, 
-        errors 
-      };
-    }
+  async downloadBatch(): Promise<{ successful: number; failed: number; errors: string[] }> {
+    throw new Error('downloadBatch is deprecated. Use getDownloadUrlsById for batch operations.');
   }
 }
 

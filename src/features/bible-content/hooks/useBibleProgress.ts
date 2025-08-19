@@ -16,7 +16,7 @@ export interface ChapterProgress {
   progress: number;
   mediaFiles: Array<{
     id: string;
-    remote_path: string | null;
+    object_key: string | null;
     duration_seconds: number | null;
   }>;
   status: 'complete' | 'in_progress' | 'not_started';
@@ -654,13 +654,13 @@ export function useBibleProgress() {
             else if (progress > 0) status = 'in_progress';
 
             // For audio versions, include actual media files count
-            let mediaFiles: Array<{ id: string; remote_path: string | null; duration_seconds: number | null }> = [];
+            let mediaFiles: Array<{ id: string; object_key: string | null; duration_seconds: number | null }> = [];
             if (selectedVersionType === 'audio') {
               const mediaFileCount = chapterMediaFilesMap.get(chapter.id) || 0;
               // Create placeholder objects for the count
               mediaFiles = Array(mediaFileCount).fill(0).map((_, index) => ({
                 id: `placeholder-${chapter.id}-${index}`,
-                remote_path: null,
+                object_key: null,
                 duration_seconds: null
               }));
             }

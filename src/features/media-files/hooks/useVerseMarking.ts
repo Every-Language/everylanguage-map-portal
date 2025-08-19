@@ -238,11 +238,11 @@ export function useVerseMarking() {
   const openModal = useCallback(async (file: MediaFileWithVerseInfo) => {
     console.log('Opening verse marking modal for file:', file);
     
-    if (!file.remote_path) {
-      console.error('No remote_path found for file:', file);
+    if (!file.id) {
+      console.error('No media file id found for file:', file);
       toast({
         title: 'Error',
-        description: 'No audio file available for verse marking',
+        description: 'No media file available for verse marking',
         variant: 'error'
       });
       return;
@@ -250,17 +250,17 @@ export function useVerseMarking() {
 
     setIsLoadingAudio(true);
     try {
-      console.log('Getting download URL for:', file.remote_path);
+      console.log('Getting download URL for media id:', file.id);
       
-      // Get presigned URL for the audio file
+      // Get presigned URL by media file ID
       const downloadService = await import('../../../shared/services/downloadService');
       const service = new downloadService.DownloadService();
-      const result = await service.getDownloadUrls([file.remote_path]);
+      const result = await service.getDownloadUrlsById({ mediaFileIds: [file.id] });
+      const audioUrl = result.media?.[file.id];
       
-      console.log('Download service result:', result);
+      console.log('Download service by-id result:', result);
       
-      if (result.success && result.urls[file.remote_path]) {
-        const audioUrl = result.urls[file.remote_path];
+      if (result.success && audioUrl) {
         console.log('Got audio URL:', audioUrl);
         
         setCurrentMediaFile(file);

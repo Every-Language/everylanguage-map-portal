@@ -36,7 +36,7 @@ export {
 export {
   useUploadStore,
   useUploadWarning,
-} from './upload'
+} from './mediaFileUpload'
 
 // UI store
 export {

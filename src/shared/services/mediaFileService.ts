@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import type { ProcessedAudioFile } from './audioFileProcessor';
-import type { UploadFileProgress } from './b2DirectUploadService';
+import type { UploadFileProgress } from './directUploadService';
 
 export interface MediaFileInsertData {
   language_entity_id: string;
@@ -10,7 +10,6 @@ export interface MediaFileInsertData {
   chapter_id: string;
   start_verse_id: string;
   end_verse_id: string;
-  remote_path: string;
   file_size: number;
   duration_seconds: number;
   upload_status: 'completed';
@@ -35,6 +34,81 @@ export interface MediaFileCreateRequest {
 }
 
 export class MediaFileService {
+  /**
+   * Create a pending media file record (for by-id upload flow)
+   */
+  async createPendingMediaFile(params: {
+    processedFile: ProcessedAudioFile;
+    projectData: { languageEntityId: string; audioVersionId: string };
+    userId: string;
+  }): Promise<string> {
+    const { processedFile, projectData, userId } = params;
+
+    // Calculate version number similar to createMediaFile
+    const version = await this.calculateVersionNumber(
+      projectData.audioVersionId,
+      processedFile.selectedChapterId!,
+      processedFile.selectedStartVerseId!,
+      processedFile.selectedEndVerseId!
+    );
+
+    const { data, error } = await supabase
+      .from('media_files')
+      .insert({
+        language_entity_id: projectData.languageEntityId,
+        audio_version_id: projectData.audioVersionId,
+        media_type: 'audio',
+        is_bible_audio: true,
+        chapter_id: processedFile.selectedChapterId!,
+        start_verse_id: processedFile.selectedStartVerseId!,
+        end_verse_id: processedFile.selectedEndVerseId!,
+        duration_seconds: Math.round(processedFile.duration),
+        upload_status: 'pending',
+        publish_status: 'pending',
+        check_status: 'pending',
+        version,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        deleted_at: null,
+        created_by: userId,
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Error creating pending media file:', error);
+      throw new Error(`Failed to create pending media file record: ${error.message}`);
+    }
+
+    return data.id;
+  }
+
+  /**
+   * Finalize a media file record after successful upload
+   */
+  async finalizeMediaFile(params: {
+    mediaFileId: string;
+    fileSize: number;
+    durationSeconds?: number;
+  }): Promise<void> {
+    const { mediaFileId, fileSize, durationSeconds } = params;
+
+    const { error } = await supabase
+      .from('media_files')
+      .update({
+        file_size: fileSize,
+        duration_seconds: durationSeconds,
+        upload_status: 'completed',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', mediaFileId);
+
+    if (error) {
+      console.error('Error finalizing media file:', error);
+      throw new Error(`Failed to finalize media file record: ${error.message}`);
+    }
+  }
+
   /**
    * Insert a single media file record into the database
    */
@@ -62,7 +136,6 @@ export class MediaFileService {
       chapter_id: processedFile.selectedChapterId!,
       start_verse_id: processedFile.selectedStartVerseId!,
       end_verse_id: processedFile.selectedEndVerseId!,
-      remote_path: uploadResult.remotePath,
       file_size: uploadResult.fileSize,
       duration_seconds: Math.round(processedFile.duration),
       upload_status: 'completed',

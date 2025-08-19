@@ -14,14 +14,15 @@ export default function CommunityCheckPage() {
     setSelectedFileForChecking(file);
     
     // Open the file in the global audio player
-    if (file.remote_path) {
+    if (file.id) {
       try {
         const downloadService = new DownloadService();
-        const result = await downloadService.getDownloadUrls([file.remote_path]);
+        const result = await downloadService.getDownloadUrlsById({ mediaFileIds: [file.id] });
         
-        if (result.success && result.urls[file.remote_path]) {
+        const signedUrl = result.media?.[file.id];
+        if (result.success && signedUrl) {
           // Convert the file to the store's expected type - using type assertion since structures are compatible
-          playFile(file as import('../../../shared/stores/audioPlayer').MediaFileWithVerseInfo, result.urls[file.remote_path]);
+          playFile(file as import('../../../shared/stores/audioPlayer').MediaFileWithVerseInfo, signedUrl);
         } else {
           console.error('Failed to get streaming URL');
         }

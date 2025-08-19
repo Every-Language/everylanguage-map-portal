@@ -9,7 +9,7 @@ import { useEffect } from 'react';
 export type MediaFile = TableRow<'media_files'>
 
 // Enhanced media file type with verse reference information
-export interface MediaFileWithVerseInfo extends MediaFile {
+export interface MediaFileWithVerseInfo extends Omit<MediaFile, 'remote_path'> {
   filename: string;
   verse_reference: string;  // e.g., "Genesis 3:1-7"
   book_name: string;
@@ -65,7 +65,6 @@ export function useOptimisticMediaFileUpdates() {
           language_entity_id: '',
           media_type: 'audio',
           publish_status: 'pending',
-          remote_path: `optimistic/${upload.fileName}`,
           upload_status: 'pending',
           updated_at: new Date().toISOString(),
           version: 1,
@@ -195,8 +194,9 @@ export function useMediaFilesByProject(projectId: string | null) {
           is_bible_audio,
           language_entity_id,
           media_type,
+          object_key,
+          storage_provider,
           publish_status,
-          remote_path,
           upload_status,
           updated_at,
           version,
@@ -245,7 +245,7 @@ export function useMediaFilesByProject(projectId: string | null) {
         };
         const book = chapter?.book;
 
-        const filename = file.remote_path?.split('/').pop() || 'Unknown';
+        const filename = file.id || 'Unknown';
 
         let verseReference = 'Unknown';
         if (book?.name && chapter?.chapter_number && startVerse?.verse_number) {
@@ -374,8 +374,9 @@ export function useMediaFilesByProjectPaginated(
           is_bible_audio,
           language_entity_id,
           media_type,
+          object_key,
+          storage_provider,
           publish_status,
-          remote_path,
           upload_status,
           updated_at,
           version,
@@ -446,8 +447,7 @@ export function useMediaFilesByProjectPaginated(
       // Search functionality - search in filenames and verse references
       if (options.searchText && options.searchText.trim()) {
         const searchTerm = options.searchText.trim()
-        // Search in remote_path (which contains filename) only for now to avoid complex OR syntax
-        query = query.ilike('remote_path', `%${searchTerm}%`)
+        query = query.ilike('id', `%${searchTerm}%`)
       }
       
       // Apply sorting
@@ -489,7 +489,7 @@ export function useMediaFilesByProjectPaginated(
         };
         const book = chapter?.book;
 
-        const filename = file.remote_path?.split('/').pop() || 'Unknown';
+        const filename = file.id || 'Unknown';
 
         let verseReference = 'Unknown';
         
@@ -772,8 +772,9 @@ export function useDeletedMediaFilesByProject(projectId: string | null) {
           is_bible_audio,
           language_entity_id,
           media_type,
+          object_key,
+          storage_provider,
           publish_status,
-          remote_path,
           upload_status,
           updated_at,
           version,
@@ -821,7 +822,7 @@ export function useDeletedMediaFilesByProject(projectId: string | null) {
         };
         const book = chapter?.book;
 
-        const filename = file.remote_path?.split('/').pop() || 'Unknown';
+        const filename = file.id || 'Unknown';
 
         let verseReference = 'Unknown';
         if (book?.name && chapter?.chapter_number && startVerse?.verse_number) {

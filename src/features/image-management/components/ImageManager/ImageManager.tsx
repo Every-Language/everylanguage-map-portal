@@ -61,6 +61,7 @@ export const ImageManager: React.FC = () => {
       getFilenameFromPath={imageManagement.utils.getFilenameFromPath}
       getTargetDisplayName={imageManagement.utils.getTargetDisplayName}
       getSetName={imageManagement.utils.getSetName}
+      getImageUrl={imageManagement.utils.getImageUrl}
       updatePublishStatusPending={imageManagement.mutations.updatePublishStatus.isPending}
       
       // Search functionality

@@ -96,7 +96,6 @@ export const BibleTextManager: React.FC<BibleTextManagerProps> = ({
       <BibleTextUploadModal
         open={bibleTextState.isModalOpen('upload')}
         onOpenChange={(open: boolean) => !open && bibleTextState.closeModal()}
-        onUploadComplete={bibleTextState.handleUploadComplete}
       />
       
       <BibleTextEditModal

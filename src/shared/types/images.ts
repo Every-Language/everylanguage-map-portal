@@ -2,7 +2,6 @@
 export interface ImageSet {
   id: string;
   name: string;
-  remote_path?: string;
   created_by?: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -10,10 +9,14 @@ export interface ImageSet {
 
 export interface Image {
   id: string;
-  remote_path: string;
   target_type: 'chapter' | 'book' | 'sermon' | 'passage' | 'verse' | 'podcast' | 'film_segment' | 'audio_segment';
   target_id: string;
   set_id?: string | null;
+  object_key?: string | null;
+  storage_provider?: string | null;
+  remote_path?: string | null; // Deprecated but kept for schema compatibility
+  file_size?: number | null;
+  upload_status?: 'pending' | 'uploading' | 'completed' | 'failed';
   created_by?: string | null;
   publish_status: 'pending' | 'published' | 'archived';
   version: number;

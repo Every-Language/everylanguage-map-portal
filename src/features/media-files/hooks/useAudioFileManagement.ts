@@ -363,26 +363,27 @@ export function useAudioFileManagement(projectId: string | null) {
   }, [projectId, enhancedAudioVersionForm, user, toast, createAudioVersionMutation, modalState, refetchAudioVersions, selectedProject?.target_language_entity_id]);
 
   const handlePlay = useCallback(async (file: MediaFileWithVerseInfo) => {
-    if (!file.remote_path) {
-      console.error('No remote path available for file');
+    if (!file.id) {
+      console.error('No media file id available for file');
       return;
     }
 
     try {
       setLoadingAudioId(file.id);
       
-      // Get presigned URL for streaming
+      // Get presigned URL for streaming by media file ID
       const downloadService = await import('../../../shared/services/downloadService');
       const service = new downloadService.DownloadService();
-      const result = await service.getDownloadUrls([file.remote_path]);
+      const result = await service.getDownloadUrlsById({ mediaFileIds: [file.id] });
+      const signedUrl = result.media?.[file.id];
       
-      if (result.success && result.urls[file.remote_path]) {
+      if (result.success && signedUrl) {
         // Convert the file to the audio player's expected type
         const audioFile = {
           ...file,
           check_status: file.check_status || 'pending'
         } as import('../../../shared/stores/audioPlayer').MediaFileWithVerseInfo;
-        playFile(audioFile, result.urls[file.remote_path]);
+        playFile(audioFile, signedUrl);
       } else {
         console.error('Failed to get streaming URL');
       }

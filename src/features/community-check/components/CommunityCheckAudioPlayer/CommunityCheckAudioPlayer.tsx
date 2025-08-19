@@ -214,7 +214,7 @@ export function CommunityCheckAudioPlayer({ file, onVerseChange }: CommunityChec
   // Generate audio URL using download service
   useEffect(() => {
     const getAudioUrl = async () => {
-      if (!file.remote_path) {
+      if (!file.id) {
         setError('No audio file available');
         return;
       }
@@ -223,13 +223,14 @@ export function CommunityCheckAudioPlayer({ file, onVerseChange }: CommunityChec
         setIsLoading(true);
         setError(null);
         
-        // Get presigned URL for streaming
+        // Get presigned URL for streaming by ID
         const downloadService = await import('@/shared/services/downloadService');
         const service = new downloadService.DownloadService();
-        const result = await service.getDownloadUrls([file.remote_path]);
+        const result = await service.getDownloadUrlsById({ mediaFileIds: [file.id] });
+        const signedUrl = result.media?.[file.id];
         
-        if (result.success && result.urls[file.remote_path]) {
-          setAudioUrl(result.urls[file.remote_path]);
+        if (result.success && signedUrl) {
+          setAudioUrl(signedUrl);
         } else {
           setError('Failed to get audio URL');
         }
@@ -242,7 +243,7 @@ export function CommunityCheckAudioPlayer({ file, onVerseChange }: CommunityChec
     };
 
     getAudioUrl();
-  }, [file.remote_path]);
+  }, [file.id]);
 
   // Playback speed options
   const speedOptions = [0.5, 0.75, 1, 1.25, 1.5, 2];

@@ -20,11 +20,7 @@ export function Navigation({ className }: NavigationProps) {
       label: 'New Project',
       icon: '➕'
     },
-    {
-      path: '/upload',
-      label: 'Upload Audio',
-      icon: '🎵'
-    },
+
     {
       path: '/components',
       label: 'UI Components',

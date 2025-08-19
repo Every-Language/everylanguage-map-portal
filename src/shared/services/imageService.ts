@@ -2,77 +2,86 @@ import { supabase } from './supabase';
 import type { 
   ImageSet, 
   Image, 
-  ImageUploadRequest, 
-  ImageUploadResponse
+  ProcessedImageFile
 } from '../types/images';
 
 export class ImageService {
-  
   /**
-   * Upload a single image to the backend using the edge function
+   * Create a pending image record for the new by-ID upload flow
    */
-  async uploadImage(
-    file: File, 
-    uploadRequest: ImageUploadRequest,
-    authToken: string,
-    onProgress?: (progress: number) => void
-  ): Promise<ImageUploadResponse> {
-    try {
-      onProgress?.(10);
+  async createPendingImage(request: {
+    processedFile: ProcessedImageFile;
+    projectData: {
+      setId?: string;
+      setName?: string;
+      createNewSet?: boolean;
+    };
+    userId: string;
+  }): Promise<string> {
+    const { processedFile, projectData, userId } = request;
 
-      // Create FormData for the multipart request
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('target_type', uploadRequest.target_type);
-      formData.append('target_id', uploadRequest.target_id);
-      
-      if (uploadRequest.set_id) {
-        formData.append('set_id', uploadRequest.set_id);
-      }
-      
-      if (uploadRequest.createNewSet && uploadRequest.setName) {
-        formData.append('create_new_set', 'true');
-        formData.append('set_name', uploadRequest.setName);
-        if (uploadRequest.setRemotePath) {
-          formData.append('set_remote_path', uploadRequest.setRemotePath);
-        }
-      }
-      
-      if (uploadRequest.metadata) {
-        formData.append('metadata', JSON.stringify(uploadRequest.metadata));
-      }
+    // Generate a unique object key for R2
+    const timestamp = Date.now();
+    const randomId = crypto.randomUUID();
+    const extension = processedFile.file.name.split('.').pop() || 'bin';
+    const objectKey = `${timestamp}-${randomId}.${extension}`;
 
-      onProgress?.(30);
+    // Determine set_id
+    let setId = projectData.setId;
+    if (projectData.createNewSet && projectData.setName) {
+      // Create new set first
+      const newSet = await this.createImageSet(projectData.setName);
+      setId = newSet.id;
+    }
 
-      // Get the Supabase URL for the edge function
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (!supabaseUrl) {
-        throw new Error('VITE_SUPABASE_URL environment variable not set');
-      }
+    const insertData = {
+      target_type: processedFile.selectedTargetType,
+      target_id: processedFile.selectedTargetId!,
+      set_id: setId || null,
+      object_key: objectKey,
+      storage_provider: 'r2',
+      remote_path: `r2://${objectKey}`, // Deprecated but kept for schema compatibility
+      upload_status: 'pending' as const,
+      publish_status: 'pending' as const,
+      version: 1,
+      created_by: userId,
+    };
 
-      const response = await fetch(`${supabaseUrl}/functions/v1/upload-image`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-        },
-        body: formData
-      });
+    const { data, error } = await supabase
+      .from('images')
+      .insert(insertData)
+      .select('id')
+      .single();
 
-      onProgress?.(80);
+    if (error) {
+      console.error('Error creating pending image:', error);
+      throw new Error(`Failed to create pending image: ${error.message}`);
+    }
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Upload failed: ${response.status} ${response.statusText} - ${errorText}`);
-      }
+    return data.id;
+  }
 
-      const result: ImageUploadResponse = await response.json();
-      onProgress?.(100);
+  /**
+   * Finalize an image record after successful upload to R2
+   */
+  async finalizeImage(request: {
+    imageId: string;
+    fileSize: number;
+  }): Promise<void> {
+    const { imageId, fileSize } = request;
 
-      return result;
+    const { error } = await supabase
+      .from('images')
+      .update({
+        file_size: fileSize,
+        upload_status: 'completed' as const,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', imageId);
 
-    } catch (error) {
-      console.error('Image upload error:', error);
-      throw error;
+    if (error) {
+      console.error('Error finalizing image:', error);
+      throw new Error(`Failed to finalize image: ${error.message}`);
     }
   }
 

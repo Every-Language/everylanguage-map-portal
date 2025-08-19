@@ -18,10 +18,10 @@ export const useDownload = () => {
   });
 
   const downloadFile = useCallback(async (file: MediaFileWithVerseInfo) => {
-    if (!file.remote_path) {
+    if (!file.id) {
       setDownloadState(prev => ({
         ...prev,
-        error: 'No remote file path available for download',
+        error: 'No media file ID available for download',
       }));
       return;
     }
@@ -37,12 +37,7 @@ export const useDownload = () => {
       // Generate a meaningful filename if not available
       let filename = file.filename;
       if (!filename || filename === 'Unknown') {
-        // Extract filename from remote path or create descriptive name
-        if (file.remote_path) {
-          filename = file.remote_path.split('/').pop() || `${file.verse_reference}.m4a`;
-        } else {
-          filename = `${file.verse_reference}.m4a`;
-        }
+        filename = `${file.verse_reference}.m4a`;
       }
 
       // Ensure the filename has an extension
@@ -54,7 +49,7 @@ export const useDownload = () => {
       filename = filename.replace(/[<>:"/\\|?*]/g, '_');
 
       await downloadService.downloadAudioFile(
-        file.remote_path,
+        file.id,
         filename,
         {
           onProgress: (progress) => {

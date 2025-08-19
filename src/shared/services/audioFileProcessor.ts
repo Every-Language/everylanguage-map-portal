@@ -1,6 +1,5 @@
 import { parseFilename, resolveFullChapterEndVerse, type ParsedFilename } from './filenameParser';
 
-// Simplified metadata interface without FFmpeg dependency
 export interface AudioMetadata {
   duration: number;
   verseTimestamps: Array<never>; // Empty array since we're not extracting verses

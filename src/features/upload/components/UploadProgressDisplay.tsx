@@ -3,8 +3,9 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import { Button } from '../../../shared/design-system/components/Button';
 import { Progress } from '../../../shared/design-system/components/Progress';
 import { LoadingSpinner } from '../../../shared/design-system/components/LoadingSpinner';
-import { useUploadStore } from '../../../shared/stores/upload';
+import { useB2UploadStore } from '../../../shared/stores/mediaFileUpload';
 import type { UploadProgressData } from '../hooks/useUploadProgress';
+import type { UploadFileProgress } from '../../../shared/services/directUploadService';
 
 export interface UploadProgressDisplayProps {
   className?: string;
@@ -23,18 +24,18 @@ export function UploadProgressDisplay({
   onClose = undefined
 }: UploadProgressDisplayProps) {
   const { 
-    uploadProgress: storeProgress, 
-    isUploading, 
-    showProgress: storeShowProgress, 
-    clearProgress, 
-    setShowProgress 
-  } = useUploadStore();
+    currentBatch, 
+    isUploading,
+    showProgressToast,
+    closeProgressToast
+  } = useB2UploadStore();
 
   // Use external data if provided, otherwise fall back to store
   const progressData = externalProgressData;
+  const storeProgress = currentBatch?.files || [];
   
   // Determine visibility
-  const shouldShow = visible !== undefined ? visible : (storeShowProgress && storeProgress.length > 0);
+  const shouldShow = visible !== undefined ? visible : (showProgressToast && storeProgress.length > 0);
   
   if (!shouldShow && !progressData) {
     return null;
@@ -62,10 +63,10 @@ export function UploadProgressDisplay({
     // Fall back to store data structure
     summary = {
       total: storeProgress.length,
-      completed: storeProgress.filter(p => p.status === 'completed').length,
-      failed: storeProgress.filter(p => p.status === 'failed').length,
-      uploading: storeProgress.filter(p => p.status === 'uploading').length,
-      pending: storeProgress.filter(p => p.status === 'pending').length,
+      completed: storeProgress.filter((p: UploadFileProgress) => p.status === 'completed').length,
+      failed: storeProgress.filter((p: UploadFileProgress) => p.status === 'failed').length,
+      uploading: storeProgress.filter((p: UploadFileProgress) => p.status === 'uploading').length,
+      pending: storeProgress.filter((p: UploadFileProgress) => p.status === 'pending').length,
     };
     isComplete = summary.total > 0 && (summary.completed + summary.failed) === summary.total;
     hasActiveUploads = isUploading || summary.uploading > 0 || summary.pending > 0;
@@ -77,10 +78,8 @@ export function UploadProgressDisplay({
   const handleDismiss = () => {
     if (onClose) {
       onClose();
-    } else if (hasActiveUploads) {
-      setShowProgress(false);
     } else {
-      clearProgress();
+      closeProgressToast();
     }
   };
 
@@ -178,8 +177,8 @@ export function UploadProgressDisplay({
         {/* Fall back to store progress display if no detailed backend data */}
         {!progressData?.files && storeProgress.length > 0 && (
           <div className="space-y-2 max-h-32 overflow-y-auto bg-white dark:bg-secondary-800 rounded-lg border border-secondary-200 dark:border-secondary-700 p-2">
-            {storeProgress.map((progress) => (
-              <div key={progress.mediaFileId || progress.fileName} className="flex items-center justify-between p-2 bg-secondary-50 dark:bg-secondary-700 rounded">
+            {storeProgress.map((progress: UploadFileProgress) => (
+              <div key={progress.fileName} className="flex items-center justify-between p-2 bg-secondary-50 dark:bg-secondary-700 rounded">
                 <span className="text-sm font-medium text-secondary-900 dark:text-secondary-100 truncate flex-1">
                   {progress.fileName}
                 </span>

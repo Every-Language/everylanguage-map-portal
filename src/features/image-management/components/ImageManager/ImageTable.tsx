@@ -27,6 +27,7 @@ interface ImageTableProps {
   onOpenUpload: () => void;
   getFilenameFromPath: (remotePath: string) => string;
   getTargetDisplayName: (image: Image) => string;
+  getImageUrl?: (imageId: string, fallbackRemotePath: string) => string;
   getSetName: (image: Image) => string;
   updatePublishStatusPending: boolean;
 
@@ -51,9 +52,9 @@ export const ImageTable: React.FC<ImageTableProps> = ({
   onEditClick,
   onPublishStatusChange,
   onOpenUpload,
-  getFilenameFromPath,
   getTargetDisplayName,
   getSetName,
+  getImageUrl,
   updatePublishStatusPending,
   searchText = '',
   onSearchChange,
@@ -194,8 +195,8 @@ export const ImageTable: React.FC<ImageTableProps> = ({
                       <td className="p-3">
                         <div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center overflow-hidden">
                           <img
-                            src={`${image.remote_path}?width=48&height=48`}
-                            alt={getFilenameFromPath(image.remote_path)}
+                            src={(getImageUrl ? getImageUrl(image.id, '') : '')}
+                            alt={image.id}
                             className="w-full h-full object-cover"
                             onError={(e) => {
                               e.currentTarget.style.display = 'none';
@@ -207,9 +208,7 @@ export const ImageTable: React.FC<ImageTableProps> = ({
                         </div>
                       </td>
                       <td className="p-3">
-                        <span className="text-sm text-gray-900 dark:text-gray-100">
-                          {getFilenameFromPath(image.remote_path)}
-                        </span>
+                        <span className="text-sm text-gray-900 dark:text-gray-100">{image.id}</span>
                       </td>
                       <td className="p-3">
                         <span className="text-sm text-gray-700 dark:text-gray-300">

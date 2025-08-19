@@ -444,7 +444,7 @@ export const AudioFileTable: React.FC<AudioFileTableProps> = ({
                                     variant="outline"
                                     size="sm"
                                     onClick={() => handlePlay(file)}
-                                    disabled={!file.remote_path || loadingAudioId === file.id}
+                                    disabled={loadingAudioId === file.id}
                                     title={loadingAudioId === file.id ? "Loading audio..." : "Play audio"}
                                   >
                                     {loadingAudioId === file.id ? (

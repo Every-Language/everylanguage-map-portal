@@ -20,7 +20,7 @@ const BibleTextPage = React.lazy(() => import('./app/pages/BibleTextPage').then(
 const ImagesPage = React.lazy(() => import('./features/image-management/pages').then(module => ({ default: module.ImagesPage })));
 const CommunityCheckPage = React.lazy(() => import('./features/community-check').then(module => ({ default: module.CommunityCheckPage })));
 const UsersPage = React.lazy(() => import('./features/user-management/pages').then(module => ({ default: module.UsersPage })));
-const AudioUploadPage = React.lazy(() => import('./features/upload/pages/AudioUploadPage').then(module => ({ default: module.AudioUploadPage })));
+
 const MyProfilePage = React.lazy(() => import('./app/pages/MyProfilePage').then(module => ({ default: module.MyProfilePage })));
 
 // Helper component to reduce repetition
@@ -66,7 +66,7 @@ function App() {
                 <Route path="/users" element={<ProtectedLayoutRoute><Suspense fallback={<PageLoadingFallback />}><UsersPage /></Suspense></ProtectedLayoutRoute>} />
                 
                 {/* Other protected routes without layout */}
-                <Route path="/upload" element={<ProtectedRoute><Suspense fallback={<PageLoadingFallback />}><AudioUploadPage /></Suspense></ProtectedRoute>} />
+
                 
                 {/* Default redirect */}
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />

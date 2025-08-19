@@ -23,7 +23,7 @@ import {
 } from '../../../shared/hooks/query/text-versions';
 import { useBibleVersions } from '../../../shared/stores/project';
 import { useChunkedBulkInsertVerseTexts } from '@/shared/hooks/query/text-versions';
-import { useUploadStore } from '@/shared/stores/upload';
+
 
 import { DocumentTextIcon, CheckCircleIcon, ExclamationTriangleIcon, PlusIcon } from '@heroicons/react/24/outline';
 
@@ -46,7 +46,6 @@ interface ProcessedRow extends CSVRow {
 interface BibleTextUploadModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUploadComplete?: () => void;
 }
 
 // OSIS book mappings
@@ -84,8 +83,7 @@ const BOOK_NUMBERS: Record<string, string> = {
 
 export function BibleTextUploadModal({ 
   open, 
-  onOpenChange, 
-  onUploadComplete 
+  onOpenChange
 }: BibleTextUploadModalProps) {
   // Data fetching
   const { user } = useAuth();
@@ -110,13 +108,11 @@ export function BibleTextUploadModal({
   // Updated mutation to use chunked upload
   const chunkedBulkInsertMutation = useChunkedBulkInsertVerseTexts();
   
-  // Upload store for progress tracking
-  const { 
-    startTextUpload, 
-    updateTextProgress, 
-    completeTextUpload,
-    setOnTextUploadComplete 
-  } = useUploadStore();
+  // Text upload methods (no-ops for now - text uploads use different flow)
+  const startTextUpload = useCallback(() => {}, []);
+  const updateTextProgress = useCallback(() => {}, []);
+  const completeTextUpload = useCallback(() => {}, []);
+  const setOnTextUploadComplete = useCallback(() => {}, []);
 
   // Check if we need to show text version creation
   const needsTextVersion = !textVersions || textVersions.length === 0;
@@ -411,9 +407,7 @@ export function BibleTextUploadModal({
       startTextUpload();
       
       // Set completion callback for when upload finishes
-      setOnTextUploadComplete(() => {
-        onUploadComplete?.();
-      });
+      setOnTextUploadComplete();
 
       // Close modal immediately to show progress
       onOpenChange(false);
@@ -438,7 +432,7 @@ export function BibleTextUploadModal({
         verseTextsData: verseTextsToInsert,
         onProgress: (progress) => {
           console.log('Upload progress:', progress);
-          updateTextProgress(progress);
+          updateTextProgress();
         }
       });
 
@@ -469,7 +463,6 @@ export function BibleTextUploadModal({
     textVersions, 
     chunkedBulkInsertMutation, 
     toast, 
-    onUploadComplete,
     onOpenChange,
     startTextUpload,
     updateTextProgress,

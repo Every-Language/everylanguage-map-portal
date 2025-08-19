@@ -869,7 +869,7 @@ export function useChapterTableData(projectId: string | null, bibleVersionId: st
     progressFraction: number;
     mediaFiles: Array<{
       id: string;
-      remote_path: string | null;
+      object_key: string | null;
       duration_seconds: number | null;
     }>;
     status: 'complete' | 'in_progress' | 'not_started';
@@ -911,7 +911,8 @@ export function useChapterTableData(projectId: string | null, bibleVersionId: st
         .from('media_files')
         .select(`
           id,
-          remote_path,
+          object_key,
+          storage_provider,
           duration_seconds,
           chapter_id,
           audio_version_id
@@ -926,7 +927,7 @@ export function useChapterTableData(projectId: string | null, bibleVersionId: st
       // Group media files by chapter
       const mediaFilesByChapter = new Map<string, Array<{
         id: string;
-        remote_path: string | null;
+        object_key: string | null;
         duration_seconds: number | null;
       }>>()
 
@@ -940,7 +941,7 @@ export function useChapterTableData(projectId: string | null, bibleVersionId: st
           
           const file = {
             id: mediaFile.id,
-            remote_path: mediaFile.remote_path,
+            object_key: mediaFile.object_key,
             duration_seconds: mediaFile.duration_seconds
           }
           
