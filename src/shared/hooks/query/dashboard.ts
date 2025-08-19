@@ -307,13 +307,13 @@ export function useProjectUsers(projectId: string | null) {
           user_id,
           users (
             id,
-            auth_uid,
             first_name,
             last_name,
             email,
             phone_number,
             created_at,
-            updated_at
+            updated_at,
+            is_anonymous
           ),
           roles (
             name

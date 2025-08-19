@@ -41,7 +41,7 @@ interface VerseFeedback {
   created_at: string | null;
   updated_at: string | null;
   verses: { verse_number: number };
-  created_by_user: { email: string; first_name: string | null; last_name: string | null } | null;
+  created_by_user: { email: string | null; first_name: string | null; last_name: string | null } | null;
 }
 
 const formatTime = (seconds: number): string => {
@@ -694,7 +694,7 @@ export function GlobalAudioPlayer() {
                           </p>
                         )}
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          By {feedback.created_by_user?.first_name} {feedback.created_by_user?.last_name} ({feedback.created_by_user?.email})
+                          By {feedback.created_by_user?.first_name} {feedback.created_by_user?.last_name} ({feedback.created_by_user?.email || 'Unknown'})
                         </p>
                       </div>
                     ))

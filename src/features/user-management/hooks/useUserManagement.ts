@@ -11,7 +11,7 @@ import {
 // Types - these would eventually move to the types directory
 interface User {
   id: string;
-  email: string;
+  email: string | null;
   first_name?: string | null;
   last_name?: string | null;
   phone_number?: string | null;
@@ -79,14 +79,14 @@ export function useUserManagement(projectId: string) {
       const matchesSearch = !filters.searchText || 
         (user.user.first_name && user.user.first_name.toLowerCase().includes(filters.searchText.toLowerCase())) ||
         (user.user.last_name && user.user.last_name.toLowerCase().includes(filters.searchText.toLowerCase())) ||
-        user.user.email.toLowerCase().includes(filters.searchText.toLowerCase());
+        (user.user.email && user.user.email.toLowerCase().includes(filters.searchText.toLowerCase()));
       
       return matchesRole && matchesStatus && matchesSearch;
     });
 
     return filtered.sort((a, b) => {
-      const aName = a.user.first_name || a.user.email;
-      const bName = b.user.first_name || b.user.email;
+      const aName = a.user.first_name || a.user.email || 'Unknown';
+      const bName = b.user.first_name || b.user.email || 'Unknown';
       return aName.localeCompare(bName);
     });
   }, [filters, projectUsers]);

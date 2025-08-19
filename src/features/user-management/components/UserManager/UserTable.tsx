@@ -5,7 +5,7 @@ import type { Role } from '../../../../shared/hooks/query/dashboard';
 
 interface User {
   id: string;
-  email: string;
+  email: string | null;
   first_name?: string | null;
   last_name?: string | null;
   phone_number?: string | null;
@@ -158,7 +158,7 @@ export const UserTable: React.FC<UserTableProps> = ({
                             {user.user.first_name || 'Unknown User'} {user.user.last_name || ''}
                           </p>
                           <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                            {user.user.email}
+                            {user.user.email || 'No email'}
                           </p>
                         </div>
                       </div>
