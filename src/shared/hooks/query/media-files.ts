@@ -195,6 +195,8 @@ export function useMediaFilesByProject(projectId: string | null) {
           language_entity_id,
           media_type,
           object_key,
+          original_filename,
+          file_type,
           storage_provider,
           publish_status,
           upload_status,
@@ -245,7 +247,9 @@ export function useMediaFilesByProject(projectId: string | null) {
         };
         const book = chapter?.book;
 
-        const filename = file.id || 'Unknown';
+        // Use original filename if available, otherwise generate from verse reference with correct extension
+        const fallbackExtension = file.file_type || 'mp3';
+        const filename = file.original_filename || `${file.id}.${fallbackExtension}`;
 
         let verseReference = 'Unknown';
         if (book?.name && chapter?.chapter_number && startVerse?.verse_number) {
@@ -375,6 +379,8 @@ export function useMediaFilesByProjectPaginated(
           language_entity_id,
           media_type,
           object_key,
+          original_filename,
+          file_type,
           storage_provider,
           publish_status,
           upload_status,
@@ -489,7 +495,9 @@ export function useMediaFilesByProjectPaginated(
         };
         const book = chapter?.book;
 
-        const filename = file.id || 'Unknown';
+        // Use original filename if available, otherwise generate from verse reference with correct extension
+        const fallbackExtension = file.file_type || 'mp3';
+        const filename = file.original_filename || `${file.id}.${fallbackExtension}`;
 
         let verseReference = 'Unknown';
         
@@ -773,6 +781,8 @@ export function useDeletedMediaFilesByProject(projectId: string | null) {
           language_entity_id,
           media_type,
           object_key,
+          original_filename,
+          file_type,
           storage_provider,
           publish_status,
           upload_status,
@@ -822,7 +832,9 @@ export function useDeletedMediaFilesByProject(projectId: string | null) {
         };
         const book = chapter?.book;
 
-        const filename = file.id || 'Unknown';
+        // Use original filename if available, otherwise generate from verse reference with correct extension
+        const fallbackExtension = file.file_type || 'mp3';
+        const filename = file.original_filename || `${file.id}.${fallbackExtension}`;
 
         let verseReference = 'Unknown';
         if (book?.name && chapter?.chapter_number && startVerse?.verse_number) {

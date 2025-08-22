@@ -67,6 +67,8 @@ export class MediaFileService {
         publish_status: 'pending',
         check_status: 'pending',
         version,
+        original_filename: processedFile.file.name, // Store original filename
+        file_type: processedFile.file.name.split('.').pop()?.toLowerCase() || null, // Extract file extension
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         deleted_at: null,

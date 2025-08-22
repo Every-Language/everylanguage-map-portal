@@ -74,25 +74,42 @@ export const useImageUploadStore = create<ImageUploadState>((set, get) => ({
 
       console.log(`📝 Created ${pendingIds.length} pending image records.`);
 
-      // Get by-id presigned PUT URLs for images
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('No authentication session found');
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const urlRes = await fetch(`${supabaseUrl}/functions/v1/get-upload-urls-by-id`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ imageIds: pendingIds, expirationHours: 24 })
+      // Get by-id presigned PUT URLs for images using Supabase client
+      console.log('🔗 Requesting upload URLs for image IDs:', pendingIds);
+      
+      // Pass original filenames mapping for backend object key generation
+      const originalFilenames: Record<string, string> = {};
+      files.forEach((file, index) => {
+        originalFilenames[pendingIds[index]] = file.file.name;
       });
-      if (!urlRes.ok) {
-        const t = await urlRes.text();
-        throw new Error(`get-upload-urls-by-id failed: ${t}`);
+      
+      const requestBody = { imageIds: pendingIds, expirationHours: 24, originalFilenames };
+      console.log('📤 Request body:', requestBody);
+      
+      const { data, error } = await supabase.functions.invoke('get-upload-urls-by-id', {
+        body: requestBody
+      });
+      
+      if (error) {
+        console.error('❌ Edge function error:', error);
+        throw new Error(`get-upload-urls-by-id failed: ${error.message}`);
       }
-      const byId = await urlRes.json() as { success: boolean; images?: Array<{ id: string; objectKey: string; uploadUrl: string }>; errors?: Record<string,string> };
+      
+      console.log('📄 Raw response:', data);
+      
+      // Handle the response structure from supabase.functions.invoke() - data is wrapped in a 'data' property
+      const functionResponse = data?.data;
+      if (!functionResponse) {
+        throw new Error('Invalid response format from Edge function');
+      }
+      
+      const byId = functionResponse as { success: boolean; images?: Array<{ id: string; objectKey: string; uploadUrl: string }>; errors?: Record<string,string> };
+      
       if (!byId.success || !byId.images || byId.images.length !== pendingIds.length) {
-        throw new Error('Failed to get upload URLs for all files');
+        const errorDetails = Object.entries(byId.errors || {}).map(([id, error]) => `${id}: ${error}`).join('; ');
+        const missingIds = pendingIds.filter(id => !byId.images?.some(img => img.id === id));
+        console.error('❌ Missing upload URLs for image IDs:', missingIds);
+        throw new Error(`Failed to get upload URLs for ${missingIds.length || 'some'} images: ${errorDetails || missingIds.join(', ')}`);
       }
       const idToUpload = new Map<string, { uploadUrl: string }>();
       byId.images.forEach(m => idToUpload.set(m.id, { uploadUrl: m.uploadUrl }));

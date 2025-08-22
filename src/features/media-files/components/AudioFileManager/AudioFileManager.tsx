@@ -94,6 +94,7 @@ export const AudioFileManager: React.FC<AudioFileManagerProps> = ({
       handleDownload={audioFileState.handleDownload}
       handleVerseMarking={audioFileState.handleVerseMarking}
       handleDelete={audioFileState.handleDelete}
+      handleRestore={audioFileState.handleRestore}
       executeBulkOperation={audioFileState.executeBulkOperation}
       clearSelection={audioFileState.clearSelection}
       downloadState={audioFileState.downloadState}

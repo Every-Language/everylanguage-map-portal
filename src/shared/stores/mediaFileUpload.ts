@@ -124,30 +124,77 @@ export const useB2UploadStore = create<B2UploadState>((set, get) => ({
 
       // Pre-create pending media_files rows
       const pendingIds: string[] = [];
-      for (const item of filesWithMetadata) {
-        const id = await mediaFileService.createPendingMediaFile({ processedFile: item.file, projectData, userId });
-        pendingIds.push(id);
+      console.log('📝 Creating pending media files for', filesWithMetadata.length, 'files');
+      
+      for (const [index, item] of filesWithMetadata.entries()) {
+        try {
+          const id = await mediaFileService.createPendingMediaFile({ processedFile: item.file, projectData, userId });
+          pendingIds.push(id);
+          console.log(`✅ Created pending file ${index + 1}/${filesWithMetadata.length}: ${id} (${item.file.file.name})`);
+        } catch (error) {
+          console.error(`❌ Failed to create pending file ${index + 1}/${filesWithMetadata.length}:`, {
+            fileName: item.file.file.name,
+            error: error instanceof Error ? error.message : error
+          });
+          throw error; // Re-throw to stop the upload process
+        }
       }
+      
+      console.log('📋 All pending media files created. IDs:', pendingIds);
 
-      // Get by-id presigned PUT URLs
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('No authentication session found');
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const urlRes = await fetch(`${supabaseUrl}/functions/v1/get-upload-urls-by-id`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ mediaFileIds: pendingIds, expirationHours: 24 })
+      // Get by-id presigned PUT URLs using Supabase client
+      console.log('🔗 Requesting upload URLs for IDs:', pendingIds);
+      
+      // Pass original filenames mapping for backend object key generation
+      const originalFilenames: Record<string, string> = {};
+      filesWithMetadata.forEach((item, index) => {
+        originalFilenames[pendingIds[index]] = item.file.file.name;
       });
-      if (!urlRes.ok) {
-        const t = await urlRes.text();
-        throw new Error(`get-upload-urls-by-id failed: ${t}`);
+      
+      const requestBody = { 
+        mediaFileIds: pendingIds, 
+        expirationHours: 24,
+        originalFilenames
+      };
+      console.log('📤 Request body:', requestBody);
+      
+      const { data, error } = await supabase.functions.invoke('get-upload-urls-by-id', {
+        body: requestBody
+      });
+      
+      if (error) {
+        console.error('❌ Edge function error:', error);
+        throw new Error(`get-upload-urls-by-id failed: ${error.message}`);
       }
-      const byId = await urlRes.json() as { success: boolean; media?: Array<{ id: string; objectKey: string; uploadUrl: string }>; errors?: Record<string,string> };
-      if (!byId.success || !byId.media || byId.media.length !== pendingIds.length) {
-        throw new Error('Failed to get upload URLs for all files');
+      
+      console.log('📄 Raw response:', data);
+      
+      // Handle the response structure from supabase.functions.invoke() - data is wrapped in a 'data' property
+      const functionResponse = data?.data;
+      if (!functionResponse) {
+        throw new Error('Invalid response format from Edge function');
+      }
+      
+      const byId = functionResponse as { success: boolean; media?: Array<{ id: string; objectKey: string; uploadUrl: string }>; errors?: Record<string,string> };
+      
+      console.log('📋 Edge function response:', {
+        success: byId.success,
+        mediaCount: byId.media?.length || 0,
+        requestedCount: pendingIds.length,
+        errors: byId.errors,
+        mediaIds: byId.media?.map(m => m.id) || []
+      });
+      
+      // Enhanced error handling with detailed information
+      if (!byId.success) {
+        const errorDetails = Object.entries(byId.errors || {}).map(([id, error]) => `${id}: ${error}`).join('; ');
+        throw new Error(`Upload URL generation failed for some files: ${errorDetails}`);
+      }
+      
+      if (!byId.media || byId.media.length !== pendingIds.length) {
+        const missingIds = pendingIds.filter(id => !byId.media?.some(m => m.id === id));
+        console.error('❌ Missing upload URLs for IDs:', missingIds);
+        throw new Error(`Failed to get upload URLs for ${missingIds.length} files: ${missingIds.join(', ')}`);
       }
       const idToUpload = new Map<string, { uploadUrl: string }>();
       byId.media.forEach(m => idToUpload.set(m.id, { uploadUrl: m.uploadUrl }));

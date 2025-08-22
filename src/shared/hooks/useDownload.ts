@@ -37,12 +37,15 @@ export const useDownload = () => {
       // Generate a meaningful filename if not available
       let filename = file.filename;
       if (!filename || filename === 'Unknown') {
-        filename = `${file.verse_reference}.m4a`;
+        // Use verse reference with file type from database or mp3 as fallback
+        const extension = file.file_type || 'mp3';
+        filename = `${file.verse_reference}.${extension}`;
       }
 
-      // Ensure the filename has an extension
+      // Ensure the filename has an extension (use file_type or default to mp3)
       if (!filename.includes('.')) {
-        filename += '.m4a';
+        const extension = file.file_type || 'mp3';
+        filename += `.${extension}`;
       }
 
       // Replace invalid filename characters

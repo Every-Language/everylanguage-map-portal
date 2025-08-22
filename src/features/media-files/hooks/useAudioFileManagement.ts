@@ -568,6 +568,16 @@ export function useAudioFileManagement(projectId: string | null) {
     });
   }, []);
 
+  // Restore handler for individual files - with confirmation
+  const handleRestore = useCallback(async (file: MediaFileWithVerseInfo) => {
+    setConfirmationModal({
+      isOpen: true,
+      type: 'restore',
+      items: [file.id],
+      message: `Are you sure you want to restore "${file.filename}"?`
+    });
+  }, []);
+
   // Confirmation modal handlers
   const handleConfirmAction = useCallback(async () => {
     try {
@@ -688,6 +698,7 @@ export function useAudioFileManagement(projectId: string | null) {
     restoreFiles,
     createAudioVersionMutation,
     handleDelete,
+    handleRestore,
     handleConfirmAction,
     handleCancelConfirmation,
     

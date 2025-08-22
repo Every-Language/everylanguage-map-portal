@@ -47,31 +47,21 @@ export class DownloadService {
       throw new Error('Provide at least one mediaFileId or imageId');
     }
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      throw new Error('No authentication session found');
-    }
-
-    const response = await fetch(`${this.supabaseUrl}/functions/v1/get-download-urls-by-id`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ mediaFileIds, imageIds, expirationHours })
+    const { data, error } = await supabase.functions.invoke('get-download-urls-by-id', {
+      body: { mediaFileIds, imageIds, expirationHours }
     });
 
-    if (!response.ok) {
-      const text = await response.text();
-      try {
-        const err = JSON.parse(text);
-        throw new Error(err.error || `HTTP ${response.status}: ${response.statusText}`);
-      } catch {
-        throw new Error(text || `HTTP ${response.status}: ${response.statusText}`);
-      }
+    if (error) {
+      throw new Error(error.message || 'Failed to get download URLs');
     }
 
-    return await response.json();
+    // Handle the response structure from supabase.functions.invoke() - data is wrapped in a 'data' property
+    const functionResponse = data?.data;
+    if (!functionResponse) {
+      throw new Error('Invalid response format from Edge function');
+    }
+
+    return functionResponse;
   }
 
   /**
@@ -147,8 +137,6 @@ export class DownloadService {
       
       onProgress?.(100);
 
-      console.log(`✅ Successfully downloaded: ${filename}`);
-
     } catch (error) {
       console.error('Download failed:', error);
       throw error instanceof Error ? error : new Error('Unknown download error');
@@ -215,9 +203,7 @@ export class DownloadService {
     setTimeout(() => {
       document.body.removeChild(a);
     }, 100);
-    
-    console.log(`📥 Initiated direct download: ${filename}`);
-  }
+      }
 
   /**
    * @deprecated Batch download method removed. Implement using getDownloadUrlsById if needed.

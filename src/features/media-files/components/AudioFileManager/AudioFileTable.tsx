@@ -55,6 +55,7 @@ interface AudioFileTableProps {
   handleDownload: (file: MediaFileWithVerseInfo) => void;
   handleVerseMarking: (file: MediaFileWithVerseInfo) => void;
   handleDelete: (file: MediaFileWithVerseInfo) => void;
+  handleRestore?: (file: MediaFileWithVerseInfo) => void;
   
   // Bulk operations
   executeBulkOperation?: (operationId: string) => void;
@@ -98,6 +99,7 @@ export const AudioFileTable: React.FC<AudioFileTableProps> = ({
   handleDownload,
   handleVerseMarking,
   handleDelete,
+  handleRestore,
   executeBulkOperation,
   clearSelection,
   downloadState,
@@ -254,29 +256,43 @@ export const AudioFileTable: React.FC<AudioFileTableProps> = ({
                     {selectedItems.length} audio file{selectedItems.length !== 1 ? 's' : ''} selected
                   </span>
                   <div className="flex items-center space-x-2">
-                    <Select 
-                      value="bulk-action" 
-                      onValueChange={(value) => {
-                        if (value !== 'bulk-action') {
-                          executeBulkOperation(value);
-                        }
-                      }}
-                    >
-                      <SelectItem value="bulk-action">Change Status</SelectItem>
-                      <SelectItem value="pending">Set to Pending</SelectItem>
-                      <SelectItem value="published">Set to Published</SelectItem>
-                      <SelectItem value="archived">Set to Archived</SelectItem>
-                      <SelectItem value="restore">Restore</SelectItem>
-                    </Select>
-                    
-                    {/* Delete Button */}
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => executeBulkOperation('soft_delete')}
-                    >
-                      Delete Selected
-                    </Button>
+                    {isViewingDeleted ? (
+                      // Deleted files view - only show restore action
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => executeBulkOperation('restore')}
+                        className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-200"
+                      >
+                        Restore Selected
+                      </Button>
+                    ) : (
+                      // Active files view - show status changes and delete
+                      <>
+                        <Select 
+                          value="bulk-action" 
+                          onValueChange={(value) => {
+                            if (value !== 'bulk-action') {
+                              executeBulkOperation(value);
+                            }
+                          }}
+                        >
+                          <SelectItem value="bulk-action">Change Status</SelectItem>
+                          <SelectItem value="pending">Set to Pending</SelectItem>
+                          <SelectItem value="published">Set to Published</SelectItem>
+                          <SelectItem value="archived">Set to Archived</SelectItem>
+                        </Select>
+                        
+                        {/* Delete Button */}
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => executeBulkOperation('soft_delete')}
+                        >
+                          Delete Selected
+                        </Button>
+                      </>
+                    )}
                     
                     <Button
                       variant="outline"
@@ -413,6 +429,7 @@ export const AudioFileTable: React.FC<AudioFileTableProps> = ({
                             <Select 
                               value={file.publish_status || 'pending'} 
                               onValueChange={(value) => handlePublishStatusChange(file.id, value as PublishStatus)}
+                              disabled={!!file.deleted_at} // Disable publish status changes for deleted files
                             >
                               <SelectItem value="pending">Pending</SelectItem>
                               <SelectItem value="published">Published</SelectItem>
@@ -426,12 +443,7 @@ export const AudioFileTable: React.FC<AudioFileTableProps> = ({
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => {
-                                    handleRowSelect(file.id);
-                                    if (executeBulkOperation) {
-                                      executeBulkOperation('restore');
-                                    }
-                                  }}
+                                  onClick={() => handleRestore?.(file)}
                                   title="Restore file"
                                   className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-200"
                                 >
