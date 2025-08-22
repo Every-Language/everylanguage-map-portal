@@ -1,4 +1,4 @@
-import { useB2UploadStore } from '../stores/mediaFileUpload';
+import { useR2UploadStore } from '../stores/mediaFileUpload';
 import { UploadProgressToast } from './UploadProgressToast';
 
 export function GlobalUploadProgress() {
@@ -8,7 +8,7 @@ export function GlobalUploadProgress() {
     closeProgressToast,
     cancelUpload,
     isUploading,
-  } = useB2UploadStore();
+  } = useR2UploadStore();
 
   return (
     <UploadProgressToast

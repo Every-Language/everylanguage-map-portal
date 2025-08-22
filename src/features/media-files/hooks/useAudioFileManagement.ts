@@ -390,7 +390,7 @@ export function useAudioFileManagement(projectId: string | null) {
           const blob = await blobResponse.blob();
           const blobUrl = URL.createObjectURL(blob);
           playFile(audioFile, blobUrl);
-        } catch (blobError) {
+        } catch {
           // Fallback to direct URL if blob creation fails
           playFile(audioFile, signedUrl);
         }

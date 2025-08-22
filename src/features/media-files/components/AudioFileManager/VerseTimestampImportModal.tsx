@@ -10,7 +10,8 @@ import {
   Button,
   LoadingSpinner,
   CSVUpload,
-  Alert
+  Alert,
+  Progress
 } from '../../../../shared/design-system/components';
 import { useToast } from '../../../../shared/design-system/hooks/useToast';
 import { useSelectedProject } from '../../../dashboard/hooks/useSelectedProject';
@@ -150,6 +151,7 @@ export function VerseTimestampImportModal({
   const [isUploading, setIsUploading] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [uploadResults, setUploadResults] = useState<{ success: number; errors: ProcessedRow[] } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ completed: number; total: number; phase: string } | null>(null);
 
   // Validate CSV structure
   const validateCSVStructure = useCallback((data: Record<string, string>[]): { isValid: boolean; errors: string[] } => {
@@ -465,6 +467,7 @@ export function VerseTimestampImportModal({
     }
 
     setIsUploading(true);
+    setUploadProgress({ completed: 0, total: 0, phase: 'Preparing data...' });
 
     try {
       // Prepare verse timestamp records for bulk insert
@@ -495,7 +498,16 @@ export function VerseTimestampImportModal({
 
       console.log('Attempting to insert verse timestamps:', allVerseTimestamps);
 
-      await bulkInsertMutation.mutateAsync(allVerseTimestamps);
+      // Use optimized bulk insert with progress tracking
+      // Choose batch size based on dataset size
+      const batchSize = allVerseTimestamps.length > 10000 ? 500 : allVerseTimestamps.length > 5000 ? 750 : 1000;
+      
+      await bulkInsertMutation.mutateAsync(allVerseTimestamps, {
+        onProgress: (progress) => {
+          setUploadProgress(progress);
+        },
+        batchSize
+      });
 
       setUploadResults({
         success: allVerseTimestamps.length,
@@ -531,6 +543,7 @@ export function VerseTimestampImportModal({
       });
     } finally {
       setIsUploading(false);
+      setUploadProgress(null);
     }
   }, [csvData, calculateVerseDurations, bulkInsertMutation, toast, onImportComplete]);
 
@@ -547,6 +560,7 @@ export function VerseTimestampImportModal({
     setCsvData([]);
     setValidationErrors([]);
     setUploadResults(null);
+    setUploadProgress(null);
     setIsProcessingCSV(false);
     setIsUploading(false);
   }, []);
@@ -647,6 +661,33 @@ export function VerseTimestampImportModal({
             </div>
           )}
 
+          {/* Upload Progress */}
+          {isUploading && uploadProgress && (
+            <div className="space-y-4 mb-4">
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-md p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium text-blue-800 dark:text-blue-200">
+                    {uploadProgress.phase}
+                  </h4>
+                  <span className="text-sm text-blue-600 dark:text-blue-400">
+                    {uploadProgress.total > 0 && (
+                      `${uploadProgress.completed}/${uploadProgress.total} (${Math.round((uploadProgress.completed / uploadProgress.total) * 100)}%)`
+                    )}
+                  </span>
+                </div>
+                {uploadProgress.total > 0 && (
+                  <Progress 
+                    value={(uploadProgress.completed / uploadProgress.total) * 100} 
+                    className="w-full"
+                  />
+                )}
+                <p className="text-sm text-blue-700 dark:text-blue-300 mt-2">
+                  Please keep this window open while the import is in progress. Large imports may take several minutes.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Upload Results */}
           {uploadResults && (
             <div className="space-y-4 mb-4">
@@ -716,7 +757,7 @@ export function VerseTimestampImportModal({
           )}
 
           {/* Preview Data */}
-          {hasData && !uploadResults && (
+          {hasData && !uploadResults && !isUploading && (
             <div className="space-y-4">
               {validRows.length > 0 && (
                 <div>
@@ -802,7 +843,7 @@ export function VerseTimestampImportModal({
               {isUploading && <LoadingSpinner className="h-4 w-4" />}
               <span>
                 {isUploading 
-                  ? 'Importing...' 
+                  ? (uploadProgress?.phase || 'Importing...') 
                   : `Import ${totalTimestamps} Timestamps`
                 }
               </span>

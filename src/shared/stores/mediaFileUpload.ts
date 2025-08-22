@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import type { QueryClient } from '@tanstack/react-query';
-import { getRecommendedUploadConfig, type UploadBatchProgress, type UploadFileProgress } from '../services/directUploadService';
+import { getRecommendedUploadConfig, type UploadBatchProgress, type UploadFileProgress } from '../types/upload';
 import { mediaFileService } from '../services/mediaFileService';
 import type { ProcessedAudioFile } from '../services/audioFileProcessor';
 import { supabase } from '../services/supabase';
 
-export interface B2UploadState {
+export interface R2UploadState {
   // Upload state
   currentBatch: UploadBatchProgress | null;
   isUploading: boolean;
@@ -39,7 +39,7 @@ export interface B2UploadState {
   resetUploadState: () => void;
 }
 
-export const useB2UploadStore = create<B2UploadState>((set, get) => ({
+export const useR2UploadStore = create<R2UploadState>((set, get) => ({
   // Initial state
   currentBatch: null,
   isUploading: false,
@@ -68,7 +68,7 @@ export const useB2UploadStore = create<B2UploadState>((set, get) => ({
       throw new Error(`${invalidFiles.length} files are missing book/chapter/verse selections`);
     }
 
-    // Prepare metadata for B2 upload
+    // Prepare metadata for R2 upload
     const uploadMetadata = {
       language: projectData.languageEntityName,
     };
@@ -81,11 +81,14 @@ export const useB2UploadStore = create<B2UploadState>((set, get) => ({
     });
 
     try {
-      // Get metadata for each file to include in B2 upload
+      // Get metadata for each file to include in R2 upload (parallelized with Promise.all)
+      console.log('📊 Fetching metadata for', files.length, 'files...');
+      const metadataStartTime = Date.now();
+      
       const filesWithMetadata = await Promise.all(
-        files.map(async (file) => {
+        files.map(async (file, index) => {
           try {
-            // Get book OSIS, chapter number, and verse numbers
+            // Get book OSIS, chapter number, and verse numbers in parallel
             const [bookOsis, chapterNumber, verseNumbers] = await Promise.all([
               mediaFileService.getBookOsisFromChapter(file.selectedChapterId!),
               mediaFileService.getChapterNumber(file.selectedChapterId!),
@@ -106,7 +109,7 @@ export const useB2UploadStore = create<B2UploadState>((set, get) => ({
               }
             };
           } catch (error) {
-            console.error(`Failed to get metadata for file ${file.file.name}:`, error);
+            console.warn(`⚠️ Failed to get metadata for file ${index + 1}/${files.length} (${file.file.name}), using fallback:`, error);
             // Use filename parsed data as fallback
             return {
               file,
@@ -121,29 +124,27 @@ export const useB2UploadStore = create<B2UploadState>((set, get) => ({
           }
         })
       );
-
-      // Pre-create pending media_files rows
-      const pendingIds: string[] = [];
-      console.log('📝 Creating pending media files for', filesWithMetadata.length, 'files');
       
-      for (const [index, item] of filesWithMetadata.entries()) {
-        try {
-          const id = await mediaFileService.createPendingMediaFile({ processedFile: item.file, projectData, userId });
-          pendingIds.push(id);
-          console.log(`✅ Created pending file ${index + 1}/${filesWithMetadata.length}: ${id} (${item.file.file.name})`);
-        } catch (error) {
-          console.error(`❌ Failed to create pending file ${index + 1}/${filesWithMetadata.length}:`, {
-            fileName: item.file.file.name,
-            error: error instanceof Error ? error.message : error
-          });
-          throw error; // Re-throw to stop the upload process
-        }
-      }
-      
-      console.log('📋 All pending media files created. IDs:', pendingIds);
+      const metadataTime = Date.now() - metadataStartTime;
+      console.log(`✅ Metadata fetched in ${metadataTime}ms (${(metadataTime / files.length).toFixed(1)}ms per file)`);
 
-      // Get by-id presigned PUT URLs using Supabase client
-      console.log('🔗 Requesting upload URLs for IDs:', pendingIds);
+      // Batch create pending media_files rows (much faster than individual inserts)
+      console.log('📝 Creating pending media files batch for', filesWithMetadata.length, 'files');
+      const startTime = Date.now();
+      
+      const pendingIds = await mediaFileService.createPendingMediaFilesBatch({
+        processedFiles: filesWithMetadata.map(item => item.file),
+        projectData,
+        userId
+      });
+      
+      const batchTime = Date.now() - startTime;
+      console.log(`✅ Created ${pendingIds.length} pending files in ${batchTime}ms (${(batchTime / pendingIds.length).toFixed(1)}ms per file)`);
+      console.log('📋 Pending media file IDs:', pendingIds);
+
+      // Get by-id presigned PUT URLs with chunking for large batches
+      console.log('🔗 Requesting upload URLs for', pendingIds.length, 'files...');
+      const urlStartTime = Date.now();
       
       // Pass original filenames mapping for backend object key generation
       const originalFilenames: Record<string, string> = {};
@@ -151,55 +152,100 @@ export const useB2UploadStore = create<B2UploadState>((set, get) => ({
         originalFilenames[pendingIds[index]] = item.file.file.name;
       });
       
-      const requestBody = { 
-        mediaFileIds: pendingIds, 
-        expirationHours: 24,
-        originalFilenames
-      };
-      console.log('📤 Request body:', requestBody);
+      // For large batches, chunk the URL requests to avoid edge function timeouts
+      const urlChunkSize = 25; // Smaller chunks for URL generation
+      let allUrlResponses: Array<{ id: string; objectKey: string; uploadUrl: string }> = [];
       
-      const { data, error } = await supabase.functions.invoke('get-upload-urls-by-id', {
-        body: requestBody
-      });
-      
-      if (error) {
-        console.error('❌ Edge function error:', error);
-        throw new Error(`get-upload-urls-by-id failed: ${error.message}`);
+      if (pendingIds.length <= urlChunkSize) {
+        // Single request for small batches
+        const requestBody = { 
+          mediaFileIds: pendingIds, 
+          expirationHours: 24,
+          originalFilenames
+        };
+        
+        const { data, error } = await supabase.functions.invoke('get-upload-urls-by-id', {
+          body: requestBody
+        });
+        
+        if (error) {
+          console.error('❌ Edge function error:', error);
+          throw new Error(`get-upload-urls-by-id failed: ${error.message}`);
+        }
+        
+        const functionResponse = data?.data;
+        const byId = functionResponse as { success: boolean; media?: Array<{ id: string; objectKey: string; uploadUrl: string }>; errors?: Record<string,string> };
+        
+        if (!byId.success || !byId.media) {
+          const errorDetails = Object.entries(byId.errors || {}).map(([id, error]) => `${id}: ${error}`).join('; ');
+          throw new Error(`Upload URL generation failed: ${errorDetails}`);
+        }
+        
+        allUrlResponses = byId.media;
+      } else {
+        // Chunked URL requests for large batches
+        console.log(`📊 Using chunked URL requests: ${Math.ceil(pendingIds.length / urlChunkSize)} chunks of ${urlChunkSize} IDs`);
+        
+        for (let i = 0; i < pendingIds.length; i += urlChunkSize) {
+          const chunk = pendingIds.slice(i, i + urlChunkSize);
+          const chunkNum = Math.floor(i / urlChunkSize) + 1;
+          const totalChunks = Math.ceil(pendingIds.length / urlChunkSize);
+          
+          console.log(`🔗 Requesting URLs for chunk ${chunkNum}/${totalChunks} (${chunk.length} files)`);
+          const chunkStartTime = Date.now();
+          
+          // Create chunk-specific filename mapping
+          const chunkFilenames: Record<string, string> = {};
+          chunk.forEach(id => {
+            if (originalFilenames[id]) {
+              chunkFilenames[id] = originalFilenames[id];
+            }
+          });
+          
+          const requestBody = { 
+            mediaFileIds: chunk, 
+            expirationHours: 24,
+            originalFilenames: chunkFilenames
+          };
+          
+          const { data, error } = await supabase.functions.invoke('get-upload-urls-by-id', {
+            body: requestBody
+          });
+          
+          if (error) {
+            console.error(`❌ Edge function error for chunk ${chunkNum}:`, error);
+            throw new Error(`get-upload-urls-by-id failed for chunk ${chunkNum}: ${error.message}`);
+          }
+          
+          const functionResponse = data?.data;
+          const byId = functionResponse as { success: boolean; media?: Array<{ id: string; objectKey: string; uploadUrl: string }>; errors?: Record<string,string> };
+          
+          if (!byId.success || !byId.media || byId.media.length !== chunk.length) {
+            const errorDetails = Object.entries(byId.errors || {}).map(([id, error]) => `${id}: ${error}`).join('; ');
+            throw new Error(`Upload URL generation failed for chunk ${chunkNum}: ${errorDetails}`);
+          }
+          
+          allUrlResponses.push(...byId.media);
+          
+          const chunkTime = Date.now() - chunkStartTime;
+          console.log(`✅ Chunk ${chunkNum} URLs generated in ${chunkTime}ms (${(chunkTime / chunk.length).toFixed(1)}ms per URL)`);
+        }
       }
       
-      console.log('📄 Raw response:', data);
+      const urlTime = Date.now() - urlStartTime;
+      console.log(`✅ All upload URLs generated in ${urlTime}ms (${(urlTime / pendingIds.length).toFixed(1)}ms per URL)`);
       
-      // Handle the response structure from supabase.functions.invoke() - data is wrapped in a 'data' property
-      const functionResponse = data?.data;
-      if (!functionResponse) {
-        throw new Error('Invalid response format from Edge function');
-      }
-      
-      const byId = functionResponse as { success: boolean; media?: Array<{ id: string; objectKey: string; uploadUrl: string }>; errors?: Record<string,string> };
-      
-      console.log('📋 Edge function response:', {
-        success: byId.success,
-        mediaCount: byId.media?.length || 0,
-        requestedCount: pendingIds.length,
-        errors: byId.errors,
-        mediaIds: byId.media?.map(m => m.id) || []
-      });
-      
-      // Enhanced error handling with detailed information
-      if (!byId.success) {
-        const errorDetails = Object.entries(byId.errors || {}).map(([id, error]) => `${id}: ${error}`).join('; ');
-        throw new Error(`Upload URL generation failed for some files: ${errorDetails}`);
-      }
-      
-      if (!byId.media || byId.media.length !== pendingIds.length) {
-        const missingIds = pendingIds.filter(id => !byId.media?.some(m => m.id === id));
+      // Validate that we have URLs for all pending IDs
+      if (allUrlResponses.length !== pendingIds.length) {
+        const missingIds = pendingIds.filter(id => !allUrlResponses.some(m => m.id === id));
         console.error('❌ Missing upload URLs for IDs:', missingIds);
         throw new Error(`Failed to get upload URLs for ${missingIds.length} files: ${missingIds.join(', ')}`);
       }
+      
       const idToUpload = new Map<string, { uploadUrl: string }>();
-      byId.media.forEach(m => idToUpload.set(m.id, { uploadUrl: m.uploadUrl }));
+      allUrlResponses.forEach(m => idToUpload.set(m.id, { uploadUrl: m.uploadUrl }));
 
-      // Initialize batch progress and run uploads with limited concurrency
+      // Initialize batch progress and run uploads with optimized concurrency
       const totalSizeMB = filesWithMetadata.reduce((sum, f) => sum + f.file.file.size, 0) / (1024 * 1024);
       const recommendedConfig = getRecommendedUploadConfig(files.length, totalSizeMB);
       const batchId = crypto.randomUUID();
@@ -213,6 +259,21 @@ export const useB2UploadStore = create<B2UploadState>((set, get) => ({
       get().updateBatchProgress(batchProgress);
 
       const concurrency = recommendedConfig.concurrency || 3;
+      console.log(`🚀 Starting ${files.length} uploads with ${concurrency} concurrent workers (${totalSizeMB.toFixed(1)}MB total)`);
+      const uploadStartTime = Date.now();
+      
+      // Track completed uploads for batch finalization
+      const completedUploads: Array<{ 
+        mediaFileId: string; 
+        fileSize: number; 
+        durationSeconds: number;
+      }> = [];
+      
+      // Throttle progress updates to prevent React infinite loops
+      const progressThrottleMap = new Map<string, number>(); // fileName -> lastUpdateTime
+      const PROGRESS_THROTTLE_MS = 200; // Update at most every 200ms per file
+      console.log(`🚫 Progress throttling enabled: max ${1000 / PROGRESS_THROTTLE_MS} updates/sec per file`);
+      
       let idx = 0;
       const worker = async () => {
         while (idx < filesWithMetadata.length) {
@@ -221,29 +282,47 @@ export const useB2UploadStore = create<B2UploadState>((set, get) => ({
           const id = pendingIds[current];
           const put = idToUpload.get(id)!;
           try {
-            // Initialize file progress as uploading
+            // Initialize file progress as uploading (with throttle tracking)
+            const fileName = item.file.file.name;
             const initialProgress: UploadFileProgress = { 
-              fileName: item.file.file.name, 
+              fileName: fileName, 
               fileSize: item.file.file.size, 
               uploadedBytes: 0, 
               status: 'uploading' 
             };
             get().updateFileProgress(initialProgress);
+            progressThrottleMap.set(fileName, Date.now()); // Initialize throttle tracking
 
-            // Use XMLHttpRequest for progress tracking
+            // Use XMLHttpRequest for progress tracking with timeout
             await new Promise<void>((resolve, reject) => {
               const xhr = new XMLHttpRequest();
               
-              // Track upload progress
+              // Set reasonable timeout (5 minutes + extra time for large files)
+              const timeoutMs = Math.max(300000, (item.file.file.size / (1024 * 1024)) * 30000); // 30s per MB
+              xhr.timeout = timeoutMs;
+              
+              // Track upload progress with throttling to prevent React infinite loops
               xhr.upload.onprogress = (e) => {
                 if (e.lengthComputable) {
-                  const progressUpdate: UploadFileProgress = {
-                    fileName: item.file.file.name,
-                    fileSize: e.total,
-                    uploadedBytes: e.loaded,
-                    status: 'uploading'
-                  };
-                  get().updateFileProgress(progressUpdate);
+                  const now = Date.now();
+                  const fileName = item.file.file.name;
+                  const lastUpdate = progressThrottleMap.get(fileName) || 0;
+                  
+                  // Only update if enough time has passed since last update for this file
+                  // OR if upload is complete (100%)
+                  const isComplete = e.loaded >= e.total;
+                  const shouldUpdate = (now - lastUpdate) >= PROGRESS_THROTTLE_MS || isComplete;
+                  
+                  if (shouldUpdate) {
+                    const progressUpdate: UploadFileProgress = {
+                      fileName: fileName,
+                      fileSize: e.total,
+                      uploadedBytes: e.loaded,
+                      status: 'uploading'
+                    };
+                    get().updateFileProgress(progressUpdate);
+                    progressThrottleMap.set(fileName, now);
+                  }
                 }
               };
               
@@ -257,14 +336,9 @@ export const useB2UploadStore = create<B2UploadState>((set, get) => ({
               };
               
               // Handle errors
-              xhr.onerror = () => {
-                reject(new Error('Network error during upload'));
-              };
-              
-              // Handle aborts
-              xhr.onabort = () => {
-                reject(new Error('Upload aborted'));
-              };
+              xhr.onerror = () => reject(new Error('Network error during upload'));
+              xhr.onabort = () => reject(new Error('Upload aborted'));
+              xhr.ontimeout = () => reject(new Error(`Upload timeout after ${timeoutMs / 1000}s`));
               
               // Start the upload
               xhr.open('PUT', put.uploadUrl);
@@ -272,9 +346,22 @@ export const useB2UploadStore = create<B2UploadState>((set, get) => ({
               xhr.send(item.file.file);
             });
 
-            await mediaFileService.finalizeMediaFile({ mediaFileId: id, fileSize: item.file.file.size, durationSeconds: Math.round(item.file.duration) });
-            const fp: UploadFileProgress = { fileName: item.file.file.name, fileSize: item.file.file.size, uploadedBytes: item.file.file.size, status: 'completed' };
+            // Track successful upload for batch finalization
+            completedUploads.push({
+              mediaFileId: id,
+              fileSize: item.file.file.size,
+              durationSeconds: Math.round(item.file.duration)
+            });
+
+            const fp: UploadFileProgress = { 
+              fileName: item.file.file.name, 
+              fileSize: item.file.file.size, 
+              uploadedBytes: item.file.file.size, 
+              status: 'completed' 
+            };
             get().updateFileProgress(fp);
+            // Clear throttle tracking for completed files
+            progressThrottleMap.delete(item.file.file.name);
             
             // Update the batch progress files array with the completed file
             const fileIndex = batchProgress.files.findIndex(f => f.fileName === item.file.file.name);
@@ -283,13 +370,18 @@ export const useB2UploadStore = create<B2UploadState>((set, get) => ({
             }
             batchProgress.completedFiles++;
             get().updateBatchProgress(batchProgress);
-            if (queryClient && projectId) {
-              queryClient.invalidateQueries({ queryKey: ['media_files_by_project_paginated', projectId] });
-              queryClient.invalidateQueries({ queryKey: ['media_files_with_verse_info', projectId] });
-            }
+            
           } catch (e) {
-            const fp: UploadFileProgress = { fileName: item.file.file.name, fileSize: item.file.file.size, uploadedBytes: 0, status: 'failed', error: e instanceof Error ? e.message : 'Upload failed' };
+            const fp: UploadFileProgress = { 
+              fileName: item.file.file.name, 
+              fileSize: item.file.file.size, 
+              uploadedBytes: 0, 
+              status: 'failed', 
+              error: e instanceof Error ? e.message : 'Upload failed' 
+            };
             get().updateFileProgress(fp);
+            // Clear throttle tracking for failed files
+            progressThrottleMap.delete(item.file.file.name);
             
             // Update the batch progress files array with the failed file
             const fileIndex = batchProgress.files.findIndex(f => f.fileName === item.file.file.name);
@@ -301,9 +393,45 @@ export const useB2UploadStore = create<B2UploadState>((set, get) => ({
           }
         }
       };
+      
       await Promise.all(Array.from({ length: Math.min(concurrency, filesWithMetadata.length) }, () => worker()));
 
-      console.log('✅ By-id upload completed:', batchProgress);
+      const uploadTime = Date.now() - uploadStartTime;
+      const avgTimePerFile = uploadTime / files.length;
+      const totalMBPerSecond = (totalSizeMB / (uploadTime / 1000)).toFixed(2);
+      
+      console.log(`✅ Upload phase completed in ${uploadTime}ms (${avgTimePerFile.toFixed(1)}ms per file, ${totalMBPerSecond}MB/s)`);
+
+      // Batch finalize all successful uploads
+      if (completedUploads.length > 0) {
+        console.log(`📝 Finalizing ${completedUploads.length} successful uploads...`);
+        const finalizeStartTime = Date.now();
+        
+        try {
+          await mediaFileService.finalizeMediaFilesBatch({ updates: completedUploads });
+          const finalizeTime = Date.now() - finalizeStartTime;
+          console.log(`✅ Finalized ${completedUploads.length} records in ${finalizeTime}ms`);
+        } catch (error) {
+          console.error('❌ Batch finalization failed, falling back to individual updates:', error);
+          // Fallback to individual finalization
+          for (const update of completedUploads) {
+            try {
+              await mediaFileService.finalizeMediaFile(update);
+            } catch (individualError) {
+              console.error(`Failed to finalize ${update.mediaFileId}:`, individualError);
+            }
+          }
+        }
+      }
+
+      // Invalidate queries for completed uploads
+      if (queryClient && projectId && completedUploads.length > 0) {
+        queryClient.invalidateQueries({ queryKey: ['media_files_by_project_paginated', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['media_files_with_verse_info', projectId] });
+      }
+
+      const totalTime = Date.now() - metadataStartTime;
+      console.log(`🎉 Total upload process completed in ${totalTime}ms for ${files.length} files (${batchProgress.completedFiles} successful, ${batchProgress.failedFiles} failed)`);
 
       // Call completion callbacks
       const { onUploadComplete, onBatchComplete } = get();
@@ -367,10 +495,24 @@ export const useB2UploadStore = create<B2UploadState>((set, get) => ({
     const { currentBatch } = get();
     if (!currentBatch) return;
 
-    // Update the specific file in the batch
-    const updatedFiles = currentBatch.files.map(f => 
-      f.fileName === progress.fileName ? progress : f
-    );
+    // Find the file to update
+    const fileIndex = currentBatch.files.findIndex(f => f.fileName === progress.fileName);
+    if (fileIndex === -1) return;
+
+    const currentFile = currentBatch.files[fileIndex];
+    
+    // Skip update if no meaningful change (prevents unnecessary re-renders)
+    if (
+      currentFile.status === progress.status &&
+      currentFile.uploadedBytes === progress.uploadedBytes &&
+      currentFile.fileSize === progress.fileSize
+    ) {
+      return;
+    }
+
+    // Create optimized update (only update the changed file)
+    const updatedFiles = [...currentBatch.files];
+    updatedFiles[fileIndex] = progress;
 
     const updatedBatch: UploadBatchProgress = {
       ...currentBatch,
@@ -391,8 +533,9 @@ export const useB2UploadStore = create<B2UploadState>((set, get) => ({
   },
 }));
 
-// Export alias for backward compatibility
-export const useUploadStore = useB2UploadStore;
+// Export aliases for backward compatibility
+export const useB2UploadStore = useR2UploadStore;
+export const useUploadStore = useR2UploadStore;
 
 // Export upload warning hook (simple implementation)
 export const useUploadWarning = () => {

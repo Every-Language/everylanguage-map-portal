@@ -677,6 +677,202 @@ export function getOsisId(bookName: string): string | undefined {
   return BOOK_NAME_TO_OSIS[bookName]
 }
 
+// In-memory cache for chapter lookups within the same session
+// Key: `${bibleVersionId}-${bookName}-${chapterNumber}` -> total_verses
+const chapterCache = new Map<string, number>();
+
+/**
+ * Clear the chapter cache (useful for testing or when bible version changes)
+ */
+export function clearChapterCache(): void {
+  chapterCache.clear();
+}
+
+/**
+ * Resolve end verse numbers for multiple full chapter recordings in a single batch query
+ * Uses in-memory caching to avoid repeated database queries for the same chapters
+ * @param parsedResults - Array of ParsedFilename results
+ * @param bibleVersionId - The bible version ID to look up chapter data
+ * @returns Array of updated ParsedFilename with resolved end verses
+ */
+export async function resolveFullChapterEndVersesBatch(
+  parsedResults: ParsedFilename[],
+  bibleVersionId: string
+): Promise<ParsedFilename[]> {
+  if (!bibleVersionId || parsedResults.length === 0) {
+    return parsedResults;
+  }
+
+  // Filter files that need resolution and extract unique chapter combinations
+  const filesToResolve = parsedResults.filter(result => 
+    result.isFullChapter && 
+    result.detectedBookOsis && 
+    result.detectedChapter && 
+    result.detectedBook
+  );
+
+  if (filesToResolve.length === 0) {
+    return parsedResults;
+  }
+
+  // Check cache first and collect uncached chapters
+  const uncachedChapters = new Map<string, { book: string; chapter: number }>();
+  const cachedResults = new Map<string, number>();
+  
+  filesToResolve.forEach(result => {
+    const cacheKey = `${bibleVersionId}-${result.detectedBook}-${result.detectedChapter}`;
+    const resultKey = `${result.detectedBook}-${result.detectedChapter}`;
+    
+    if (chapterCache.has(cacheKey)) {
+      cachedResults.set(resultKey, chapterCache.get(cacheKey)!);
+    } else if (!uncachedChapters.has(resultKey)) {
+      uncachedChapters.set(resultKey, {
+        book: result.detectedBook!,
+        chapter: result.detectedChapter!
+      });
+    }
+  });
+
+  console.log(`📋 Cache status: ${cachedResults.size} cached, ${uncachedChapters.size} need lookup`);
+
+  if (uncachedChapters.size === 0) {
+    // All results are cached, apply them directly
+    return parsedResults.map(result => {
+      if (!result.isFullChapter || !result.detectedBook || !result.detectedChapter) {
+        return result;
+      }
+
+      const key = `${result.detectedBook}-${result.detectedChapter}`;
+      const totalVerses = cachedResults.get(key);
+
+      if (totalVerses) {
+        return {
+          ...result,
+          detectedEndVerse: totalVerses,
+          verseRange: `1-${totalVerses}`,
+        };
+      }
+      return result;
+    });
+  }
+
+  try {
+    // Import supabase dynamically to avoid circular dependencies
+    const { supabase } = await import('./supabase');
+    
+    console.log(`🔍 Resolving ${uncachedChapters.size} unique chapters for ${filesToResolve.length} files...`);
+    const startTime = Date.now();
+
+    // Build batch query using OR conditions for up to 20 combinations
+    // For larger batches, we'll chunk them
+    const chapterArray = Array.from(uncachedChapters.values());
+    const chunkSize = 20;
+    const newChapterData = new Map<string, number>(); // key -> total_verses
+
+    for (let i = 0; i < chapterArray.length; i += chunkSize) {
+      const chunk = chapterArray.slice(i, i + chunkSize);
+      
+      if (chunk.length === 1) {
+        // Single query for one chapter
+        const chapter = chunk[0];
+        const { data, error } = await supabase
+          .from('chapters')
+          .select(`
+            total_verses,
+            chapter_number,
+            books!inner (
+              name,
+              bible_version_id
+            )
+          `)
+          .eq('books.bible_version_id', bibleVersionId)
+          .eq('chapter_number', chapter.chapter)
+          .eq('books.name', chapter.book)
+          .single();
+
+        if (!error && data) {
+          const key = `${chapter.book}-${chapter.chapter}`;
+          const cacheKey = `${bibleVersionId}-${chapter.book}-${chapter.chapter}`;
+          newChapterData.set(key, data.total_verses);
+          chapterCache.set(cacheKey, data.total_verses);
+        }
+      } else {
+        // Batch query using OR conditions
+        const orConditions: string[] = [];
+        
+        chunk.forEach(chapter => {
+          orConditions.push(`and(books.name.eq.${chapter.book},chapter_number.eq.${chapter.chapter})`);
+        });
+        
+        const { data, error } = await supabase
+          .from('chapters')
+          .select(`
+            total_verses,
+            chapter_number,
+            books!inner (
+              name,
+              bible_version_id
+            )
+          `)
+          .eq('books.bible_version_id', bibleVersionId)
+          .or(orConditions.join(','));
+
+        if (!error && data) {
+          data.forEach(record => {
+            const key = `${record.books.name}-${record.chapter_number}`;
+            const cacheKey = `${bibleVersionId}-${record.books.name}-${record.chapter_number}`;
+            newChapterData.set(key, record.total_verses);
+            chapterCache.set(cacheKey, record.total_verses);
+          });
+        }
+      }
+    }
+
+    const queryTime = Date.now() - startTime;
+    console.log(`✅ Resolved ${newChapterData.size}/${uncachedChapters.size} new chapters in ${queryTime}ms`);
+
+    // Combine cached and newly fetched data
+    const allChapterData = new Map([...cachedResults, ...newChapterData]);
+
+    // Apply results to all parsed filenames
+    return parsedResults.map(result => {
+      if (!result.isFullChapter || !result.detectedBook || !result.detectedChapter) {
+        return result;
+      }
+
+      const key = `${result.detectedBook}-${result.detectedChapter}`;
+      const totalVerses = allChapterData.get(key);
+
+      if (totalVerses) {
+        return {
+          ...result,
+          detectedEndVerse: totalVerses,
+          verseRange: `1-${totalVerses}`,
+        };
+      } else {
+        return {
+          ...result,
+          errors: [...(result.errors || []), `Chapter ${result.detectedBook} ${result.detectedChapter} not found in database`]
+        };
+      }
+    });
+
+  } catch (error) {
+    console.warn('Error resolving chapter verses batch:', error);
+    
+    // Return original results with error annotations
+    return parsedResults.map(result => {
+      if (result.isFullChapter) {
+        return {
+          ...result,
+          errors: [...(result.errors || []), `Error resolving chapter verses: ${error}`]
+        };
+      }
+      return result;
+    });
+  }
+}
+
 /**
  * Resolve end verse number for full chapter recordings by looking up chapter's total_verses
  * @param parsedResult - The result from parseFilename
@@ -687,58 +883,7 @@ export async function resolveFullChapterEndVerse(
   parsedResult: ParsedFilename,
   bibleVersionId: string
 ): Promise<ParsedFilename> {
-  // Only resolve if this is marked as a full chapter and we have the required data
-  if (!parsedResult.isFullChapter || !parsedResult.detectedBookOsis || !parsedResult.detectedChapter || !parsedResult.detectedBook) {
-    return parsedResult
-  }
-
-  try {
-    // Import supabase dynamically to avoid circular dependencies
-    const { supabase } = await import('./supabase')
-    
-    // Look up the chapter to get total_verses
-    const { data: chapter, error } = await supabase
-      .from('chapters')
-      .select(`
-        total_verses,
-        books!inner (
-          id,
-          name,
-          bible_version_id
-        )
-      `)
-      .eq('books.bible_version_id', bibleVersionId)
-      .eq('chapter_number', parsedResult.detectedChapter)
-      .eq('books.name', parsedResult.detectedBook)
-      .single()
-
-    if (error) {
-      console.warn('Failed to resolve chapter verses:', error)
-      return {
-        ...parsedResult,
-        errors: [...(parsedResult.errors || []), `Failed to resolve chapter verses: ${error.message}`]
-      }
-    }
-
-    if (!chapter) {
-      return {
-        ...parsedResult,
-        errors: [...(parsedResult.errors || []), 'Chapter not found in database']
-      }
-    }
-
-    // Update the result with the actual end verse
-    return {
-      ...parsedResult,
-      detectedEndVerse: chapter.total_verses,
-      verseRange: `1-${chapter.total_verses}`,
-    }
-
-  } catch (error) {
-    console.warn('Error resolving chapter verses:', error)
-    return {
-      ...parsedResult,
-      errors: [...(parsedResult.errors || []), `Error resolving chapter verses: ${error}`]
-    }
-  }
+  // Use batch function for single item
+  const results = await resolveFullChapterEndVersesBatch([parsedResult], bibleVersionId);
+  return results[0];
 } 

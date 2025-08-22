@@ -29,7 +29,7 @@ export default function CommunityCheckPage() {
             
             // Convert the file to the store's expected type - using type assertion since structures are compatible
             playFile(file as import('../../../shared/stores/audioPlayer').MediaFileWithVerseInfo, blobUrl);
-          } catch (blobError) {
+          } catch {
             // Fallback to direct URL if blob creation fails
             playFile(file as import('../../../shared/stores/audioPlayer').MediaFileWithVerseInfo, signedUrl);
           }

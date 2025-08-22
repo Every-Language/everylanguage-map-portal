@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { QueryClient } from '@tanstack/react-query';
-import { getRecommendedUploadConfig, type UploadBatchProgress, type UploadFileProgress } from '../services/directUploadService';
+import { getRecommendedUploadConfig, type UploadBatchProgress, type UploadFileProgress } from '../types/upload';
 import { supabase } from '../services/supabase';
 import type { ProcessedImageFile } from '../types/images';
 

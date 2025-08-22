@@ -3,9 +3,9 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import { Button } from '../../../shared/design-system/components/Button';
 import { Progress } from '../../../shared/design-system/components/Progress';
 import { LoadingSpinner } from '../../../shared/design-system/components/LoadingSpinner';
-import { useB2UploadStore } from '../../../shared/stores/mediaFileUpload';
+import { useR2UploadStore } from '../../../shared/stores/mediaFileUpload';
 import type { UploadProgressData } from '../hooks/useUploadProgress';
-import type { UploadFileProgress } from '../../../shared/services/directUploadService';
+import type { UploadFileProgress } from '../../../shared/types/upload';
 
 export interface UploadProgressDisplayProps {
   className?: string;
@@ -28,7 +28,7 @@ export function UploadProgressDisplay({
     isUploading,
     showProgressToast,
     closeProgressToast
-  } = useB2UploadStore();
+  } = useR2UploadStore();
 
   // Use external data if provided, otherwise fall back to store
   const progressData = externalProgressData;

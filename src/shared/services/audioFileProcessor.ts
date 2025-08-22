@@ -1,4 +1,4 @@
-import { parseFilename, resolveFullChapterEndVerse, type ParsedFilename } from './filenameParser';
+import { parseFilename, resolveFullChapterEndVerse, resolveFullChapterEndVersesBatch, type ParsedFilename } from './filenameParser';
 
 export interface AudioMetadata {
   duration: number;
@@ -171,10 +171,42 @@ export class AudioFileProcessor {
   }
 
   async processFiles(files: File[], bibleVersionId?: string): Promise<ProcessedAudioFile[]> {
-    // Process files in parallel for better performance
-    const promises = files.map(async (file) => {
+    if (files.length === 0) {
+      return [];
+    }
+
+    console.log(`📁 Processing ${files.length} files${bibleVersionId ? ' with bible version resolution' : ''}...`);
+    const startTime = Date.now();
+
+    // Step 1: Parse all filenames first (no DB calls)
+    const filenameParseResults = files.map(file => ({
+      file,
+      parseResult: parseFilename(file.name)
+    }));
+
+    // Step 2: Batch resolve full chapter end verses (single DB query for all)
+    let resolvedParseResults: typeof filenameParseResults;
+    if (bibleVersionId) {
+      const batchStartTime = Date.now();
+      const parseResults = filenameParseResults.map(item => item.parseResult);
+      const resolvedResults = await resolveFullChapterEndVersesBatch(parseResults, bibleVersionId);
+      
+      resolvedParseResults = filenameParseResults.map((item, index) => ({
+        file: item.file,
+        parseResult: resolvedResults[index]
+      }));
+      
+      const batchTime = Date.now() - batchStartTime;
+      console.log(`✅ Batch chapter resolution completed in ${batchTime}ms`);
+    } else {
+      resolvedParseResults = filenameParseResults;
+    }
+
+    // Step 3: Process files in parallel (extract metadata, validate)
+    const metadataStartTime = Date.now();
+    const promises = resolvedParseResults.map(async ({ file, parseResult }) => {
       try {
-        return await this.processFile(file, bibleVersionId);
+        return await this.processFileWithParsedResult(file, parseResult);
       } catch (error) {
         console.error('Failed to process file:', file.name, error);
         
@@ -186,7 +218,7 @@ export class AudioFileProcessor {
           type: file.type,
           id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           duration: 0,
-          filenameParseResult: { originalFilename: file.name, confidence: 'none' as const },
+          filenameParseResult: parseResult,
           audioMetadata: { duration: 0, verseTimestamps: [], hasVerseData: false as const },
           validationErrors: [`Processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`],
           isValid: false,
@@ -198,7 +230,47 @@ export class AudioFileProcessor {
     });
     
     const processedFiles = await Promise.all(promises);
+    
+    const metadataTime = Date.now() - metadataStartTime;
+    const totalTime = Date.now() - startTime;
+    const avgTimePerFile = totalTime / files.length;
+    
+    console.log(`🎉 Processed ${files.length} files in ${totalTime}ms (${avgTimePerFile.toFixed(1)}ms per file)`);
+    console.log(`   • Metadata extraction: ${metadataTime}ms`);
+    
     return processedFiles;
+  }
+
+  /**
+   * Process a single file with an already-parsed filename result
+   * This is used internally by processFiles for better performance
+   */
+  private async processFileWithParsedResult(file: File, filenameParseResult: ParsedFilename): Promise<ProcessedAudioFile> {
+    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Extract basic metadata (duration only)
+    const audioMetadata = await this.extractBasicMetadata(file);
+    
+    // Validate
+    const validationErrors = this.validateFile(file, filenameParseResult, audioMetadata);
+    
+    // Create processed file object with file as a property
+    const processedFile: ProcessedAudioFile = {
+      file,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      id,
+      duration: audioMetadata.duration,
+      filenameParseResult,
+      audioMetadata,
+      validationErrors,
+      isValid: validationErrors.length === 0,
+      uploadProgress: 0,
+      uploadStatus: 'pending'
+    };
+    
+    return processedFile;
   }
 
   // Helper method to update a processed file

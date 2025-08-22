@@ -239,7 +239,7 @@ export function CommunityCheckAudioPlayer({ file, onVerseChange }: CommunityChec
             const blobUrl = URL.createObjectURL(blob);
             currentBlobUrl = blobUrl;
             setAudioUrl(blobUrl);
-          } catch (blobError) {
+          } catch {
             // Fallback to direct URL if blob creation fails
             setAudioUrl(signedUrl);
           }

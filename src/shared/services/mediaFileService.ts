@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import type { ProcessedAudioFile } from './audioFileProcessor';
-import type { UploadFileProgress } from './directUploadService';
+import type { UploadFileProgress } from '../types/upload';
 
 export interface MediaFileInsertData {
   language_entity_id: string;
@@ -83,6 +83,271 @@ export class MediaFileService {
     }
 
     return data.id;
+  }
+
+  /**
+   * Create multiple pending media file records in a single batch operation
+   * This is much more efficient than creating them individually
+   */
+  async createPendingMediaFilesBatch(params: {
+    processedFiles: ProcessedAudioFile[];
+    projectData: { languageEntityId: string; audioVersionId: string };
+    userId: string;
+  }): Promise<string[]> {
+    const { processedFiles, projectData, userId } = params;
+
+    if (processedFiles.length === 0) {
+      return [];
+    }
+
+    // Step 1: Batch calculate version numbers for all unique chapter/verse combinations
+    const versionMap = await this.calculateVersionNumbersBatch(
+      projectData.audioVersionId,
+      processedFiles
+    );
+
+    // Step 2: Prepare all insert records
+    const now = new Date().toISOString();
+    const insertRecords = processedFiles.map(file => ({
+      language_entity_id: projectData.languageEntityId,
+      audio_version_id: projectData.audioVersionId,
+      media_type: 'audio' as const,
+      is_bible_audio: true,
+      chapter_id: file.selectedChapterId!,
+      start_verse_id: file.selectedStartVerseId!,
+      end_verse_id: file.selectedEndVerseId!,
+      duration_seconds: Math.round(file.duration),
+      upload_status: 'pending' as const,
+      publish_status: 'pending' as const,
+      check_status: 'pending' as const,
+      version: versionMap.get(`${file.selectedChapterId}-${file.selectedStartVerseId}-${file.selectedEndVerseId}`) || 1,
+      original_filename: file.file.name,
+      file_type: file.file.name.split('.').pop()?.toLowerCase() || null,
+      created_at: now,
+      updated_at: now,
+      deleted_at: null,
+      created_by: userId,
+    }));
+
+    // Step 3: Batch insert with chunking for large batches
+    const chunkSize = 25; // Smaller chunks for better performance
+    const allIds: string[] = [];
+    
+    if (insertRecords.length <= chunkSize) {
+      // Single batch for small batches
+      const { data, error } = await supabase
+        .from('media_files')
+        .insert(insertRecords)
+        .select('id');
+
+      if (error) {
+        console.error('Error creating pending media files batch:', error);
+        throw new Error(`Failed to create pending media file records: ${error.message}`);
+      }
+
+      if (!data || data.length !== processedFiles.length) {
+        throw new Error(`Expected ${processedFiles.length} records, but got ${data?.length || 0}`);
+      }
+
+      return data.map(record => record.id);
+    } else {
+      // Chunked batch inserts for large batches
+      console.log(`📊 Using chunked inserts: ${Math.ceil(insertRecords.length / chunkSize)} batches of ${chunkSize} records`);
+      
+      for (let i = 0; i < insertRecords.length; i += chunkSize) {
+        const chunk = insertRecords.slice(i, i + chunkSize);
+        const batchNum = Math.floor(i / chunkSize) + 1;
+        const totalBatches = Math.ceil(insertRecords.length / chunkSize);
+        
+        console.log(`📝 Inserting batch ${batchNum}/${totalBatches} (${chunk.length} records)`);
+        const chunkStartTime = Date.now();
+        
+        const { data, error } = await supabase
+          .from('media_files')
+          .insert(chunk)
+          .select('id');
+
+        if (error) {
+          console.error(`Error creating pending media files batch ${batchNum}:`, error);
+          throw new Error(`Failed to create pending media file records in batch ${batchNum}: ${error.message}`);
+        }
+
+        if (!data || data.length !== chunk.length) {
+          throw new Error(`Expected ${chunk.length} records in batch ${batchNum}, but got ${data?.length || 0}`);
+        }
+
+        allIds.push(...data.map(record => record.id));
+        
+        const chunkTime = Date.now() - chunkStartTime;
+        console.log(`✅ Batch ${batchNum} completed in ${chunkTime}ms (${(chunkTime / chunk.length).toFixed(1)}ms per record)`);
+      }
+
+      return allIds;
+    }
+  }
+
+  /**
+   * Calculate version numbers for multiple files in a single batch query
+   */
+  private async calculateVersionNumbersBatch(
+    audioVersionId: string,
+    processedFiles: ProcessedAudioFile[]
+  ): Promise<Map<string, number>> {
+    // Create unique combinations of chapter/verse ranges
+    const uniqueCombinations = new Set<string>();
+    const combinationToKey = new Map<string, string>();
+
+    processedFiles.forEach(file => {
+      const key = `${file.selectedChapterId}-${file.selectedStartVerseId}-${file.selectedEndVerseId}`;
+      const combination = `${file.selectedChapterId}:${file.selectedStartVerseId}:${file.selectedEndVerseId}`;
+      uniqueCombinations.add(combination);
+      combinationToKey.set(combination, key);
+    });
+
+    const versionMap = new Map<string, number>();
+
+    if (uniqueCombinations.size === 0) {
+      return versionMap;
+    }
+
+
+
+    // Process in chunks to handle any batch size efficiently
+    const chunkSize = 50; // Increased from 20
+    const combinationArray = Array.from(uniqueCombinations);
+    
+    for (let i = 0; i < combinationArray.length; i += chunkSize) {
+      const chunk = combinationArray.slice(i, i + chunkSize);
+      
+      console.log(`📊 Processing version batch ${Math.floor(i / chunkSize) + 1}/${Math.ceil(combinationArray.length / chunkSize)} (${chunk.length} combinations)`);
+      
+      if (chunk.length === 1) {
+        // Single query optimization
+        const combination = chunk[0];
+        const [chapterId, startVerseId, endVerseId] = combination.split(':');
+        const key = combinationToKey.get(combination)!;
+        
+        const { data } = await supabase
+          .from('media_files')
+          .select('version')
+          .eq('audio_version_id', audioVersionId)
+          .eq('chapter_id', chapterId)
+          .eq('start_verse_id', startVerseId)
+          .eq('end_verse_id', endVerseId)
+          .is('deleted_at', null)
+          .order('version', { ascending: false })
+          .limit(1);
+        
+        const maxVersion = data?.[0]?.version || 0;
+        versionMap.set(key, maxVersion + 1);
+      } else {
+        // Batch query using OR conditions
+        const orConditions: string[] = [];
+        
+        for (const combination of chunk) {
+          const [chapterId, startVerseId, endVerseId] = combination.split(':');
+          orConditions.push(`and(chapter_id.eq.${chapterId},start_verse_id.eq.${startVerseId},end_verse_id.eq.${endVerseId})`);
+        }
+        
+        const batchQuery = supabase
+          .from('media_files')
+          .select('chapter_id, start_verse_id, end_verse_id, version')
+          .eq('audio_version_id', audioVersionId)
+          .is('deleted_at', null)
+          .or(orConditions.join(','));
+        const { data, error } = await batchQuery;
+        
+        if (error) {
+          console.error('Batch version query failed, falling back to individual queries:', error);
+          // Fallback to individual queries for this chunk
+          for (const combination of chunk) {
+            const [chapterId, startVerseId, endVerseId] = combination.split(':');
+            const key = combinationToKey.get(combination)!;
+            
+            const { data: individualData } = await supabase
+              .from('media_files')
+              .select('version')
+              .eq('audio_version_id', audioVersionId)
+              .eq('chapter_id', chapterId)
+              .eq('start_verse_id', startVerseId)
+              .eq('end_verse_id', endVerseId)
+              .is('deleted_at', null)
+              .order('version', { ascending: false })
+              .limit(1);
+            
+            const maxVersion = individualData?.[0]?.version || 0;
+            versionMap.set(key, maxVersion + 1);
+          }
+        } else {
+          // Process batch results
+          const existingVersions = new Map<string, number>();
+          
+          data?.forEach(record => {
+            const key = `${record.chapter_id}-${record.start_verse_id}-${record.end_verse_id}`;
+            const currentMax = existingVersions.get(key) || 0;
+            existingVersions.set(key, Math.max(currentMax, record.version || 0));
+          });
+          
+          // Set version numbers for this chunk
+          chunk.forEach(combination => {
+            const key = combinationToKey.get(combination)!;
+            const maxVersion = existingVersions.get(key) || 0;
+            versionMap.set(key, maxVersion + 1);
+          });
+        }
+      }
+    }
+    
+    return versionMap;
+  }
+
+  /**
+   * Finalize multiple media file records after successful upload (batch operation)
+   */
+  async finalizeMediaFilesBatch(params: {
+    updates: Array<{
+      mediaFileId: string;
+      fileSize: number;
+      durationSeconds?: number;
+    }>;
+  }): Promise<void> {
+    const { updates } = params;
+
+    if (updates.length === 0) {
+      return;
+    }
+
+    // For batch updates, we need to use individual updates since Supabase doesn't support
+    // batch updates with different values easily. However, we can parallelize them.
+    const updatePromises = updates.map(({ mediaFileId, fileSize, durationSeconds }) =>
+      supabase
+        .from('media_files')
+        .update({
+          file_size: fileSize,
+          duration_seconds: durationSeconds,
+          upload_status: 'completed',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', mediaFileId)
+    );
+
+    const results = await Promise.allSettled(updatePromises);
+    
+    const failures = results
+      .map((result, index) => ({ result, index }))
+      .filter(({ result }) => result.status === 'rejected')
+      .map(({ result, index }) => ({
+        mediaFileId: updates[index].mediaFileId,
+        error: (result as PromiseRejectedResult).reason
+      }));
+
+    if (failures.length > 0) {
+      console.error('Some media files failed to finalize:', failures);
+      const failedIds = failures.map(f => f.mediaFileId).join(', ');
+      throw new Error(`Failed to finalize ${failures.length} media file records: ${failedIds}`);
+    }
+
+    console.log(`✅ Finalized ${updates.length} media files successfully`);
   }
 
   /**

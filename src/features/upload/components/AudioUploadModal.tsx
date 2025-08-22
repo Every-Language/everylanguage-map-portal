@@ -14,7 +14,7 @@ import { AudioFileRow } from './AudioFileRow';
 import { useToast } from '../../../shared/design-system/hooks/useToast';
 import { useSelectedProject } from '../../dashboard/hooks/useSelectedProject';
 import { AudioFileProcessor, type ProcessedAudioFile } from '../../../shared/services/audioFileProcessor';
-import { useB2AudioUpload } from '../hooks/useB2AudioUpload';
+import { useR2AudioUpload } from '../hooks/useR2AudioUpload';
 import { supabase } from '../../../shared/services/supabase';
 import { useQuery } from '@tanstack/react-query';
 
@@ -61,12 +61,12 @@ export function AudioUploadModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]); // Don't include audioFiles.length to prevent infinite loop
   
-  // B2 upload functionality
+  // R2 upload functionality
   const {
     isUploading,
-    handleUpload: handleB2Upload,
+    handleUpload: handleR2Upload,
     uploadSummary,
-  } = useB2AudioUpload();
+  } = useR2AudioUpload();
   
   const { toast } = useToast();
   const audioProcessor = useRef(new AudioFileProcessor()).current;
@@ -122,11 +122,10 @@ export function AudioUploadModal({
         });
       }
       
-      // Process each file
-      const processedFiles = await Promise.all(
-        supportedFiles.map(file => 
-          audioProcessor.processFile(file, defaultBibleVersionId || undefined)
-        )
+      // Process files in batch (optimized with batch database queries)
+      const processedFiles = await audioProcessor.processFiles(
+        supportedFiles, 
+        defaultBibleVersionId || undefined
       );
       
       // Add to existing files, but prevent duplicates based on file name and size
@@ -183,7 +182,7 @@ export function AudioUploadModal({
     }
   }, [currentlyPlayingId]);
 
-  // Handle upload using B2 direct upload
+  // Handle upload using Cloudflare R2 direct upload
   const handleUpload = useCallback(async () => {
     if (!selectedProject) {
       toast({
@@ -223,8 +222,8 @@ export function AudioUploadModal({
     try {
       console.log('🚀 Starting upload for', validFiles.length, 'files');
       
-      // Start B2 upload
-      await handleB2Upload(validFiles, selectedAudioVersionId);
+      // Start R2 upload
+      await handleR2Upload(validFiles, selectedAudioVersionId);
       
       // Close modal on successful upload initiation
       onOpenChange(false);
@@ -236,7 +235,7 @@ export function AudioUploadModal({
       console.error('Upload failed:', error);
       // Error handling is done in the hook
     }
-  }, [selectedProject, selectedAudioVersionId, audioFiles, handleB2Upload, onOpenChange, onUploadComplete, toast]);
+  }, [selectedProject, selectedAudioVersionId, audioFiles, handleR2Upload, onOpenChange, onUploadComplete, toast]);
 
   // Get files ready for upload count
   const filesReadyForUpload = audioFiles.filter(f => 

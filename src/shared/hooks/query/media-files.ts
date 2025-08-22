@@ -605,7 +605,8 @@ export function useUpdateMediaFile() {
   return useUpdateRecord('media_files', {
     invalidateQueries: [
       ['media_files'],
-      ['media_files_with_verse_info'] // Also invalidate enhanced query
+      ['media_files_with_verse_info'], // Also invalidate enhanced query
+      ['media_files_by_project_paginated'] // Invalidate paginated query
     ]
   })
 } 
@@ -629,9 +630,10 @@ export function useUpdateMediaFileStatus() {
       return data;
     },
     onSuccess: () => {
-      // Invalidate and refetch media files
+      // Invalidate and refetch media files - use broader query patterns to catch paginated queries
       queryClient.invalidateQueries({ queryKey: ['media_files'] });
       queryClient.invalidateQueries({ queryKey: ['media_files_with_verse_info'] });
+      queryClient.invalidateQueries({ queryKey: ['media_files_by_project_paginated'] });
     },
   });
 }
@@ -654,9 +656,10 @@ export function useBatchUpdateMediaFileStatus() {
       return data;
     },
     onSuccess: () => {
-      // Invalidate and refetch media files
+      // Invalidate and refetch media files - use broader query patterns to catch paginated queries
       queryClient.invalidateQueries({ queryKey: ['media_files'] });
       queryClient.invalidateQueries({ queryKey: ['media_files_with_verse_info'] });
+      queryClient.invalidateQueries({ queryKey: ['media_files_by_project_paginated'] });
     },
   });
 }
@@ -679,9 +682,10 @@ export function useBatchUpdateMediaFilePublishStatus() {
       return data;
     },
     onSuccess: () => {
-      // Invalidate and refetch media files
+      // Invalidate and refetch media files - use broader query patterns to catch paginated queries
       queryClient.invalidateQueries({ queryKey: ['media_files'] });
       queryClient.invalidateQueries({ queryKey: ['media_files_with_verse_info'] });
+      queryClient.invalidateQueries({ queryKey: ['media_files_by_project_paginated'] });
     },
   });
 }
@@ -696,7 +700,10 @@ export function useSoftDeleteMediaFiles() {
     mutationFn: async ({ fileIds }: { fileIds: string[] }) => {
       const { data, error } = await supabase
         .from('media_files')
-        .update({ deleted_at: new Date().toISOString() })
+        .update({ 
+          deleted_at: new Date().toISOString(),
+          publish_status: 'archived' // Auto-change publish status to archived when deleting
+        })
         .in('id', fileIds)
         .select();
 
@@ -704,9 +711,10 @@ export function useSoftDeleteMediaFiles() {
       return data;
     },
     onSuccess: () => {
-      // Invalidate and refetch media files
+      // Invalidate and refetch media files - use broader query patterns to catch paginated queries
       queryClient.invalidateQueries({ queryKey: ['media_files'] });
       queryClient.invalidateQueries({ queryKey: ['media_files_with_verse_info'] });
+      queryClient.invalidateQueries({ queryKey: ['media_files_by_project_paginated'] });
     },
   });
 } 
@@ -721,7 +729,10 @@ export function useRestoreMediaFiles() {
     mutationFn: async ({ fileIds }: { fileIds: string[] }) => {
       const { data, error } = await supabase
         .from('media_files')
-        .update({ deleted_at: null })
+        .update({ 
+          deleted_at: null,
+          publish_status: 'pending' // Auto-change publish status to pending when restoring
+        })
         .in('id', fileIds)
         .select();
 
@@ -729,9 +740,10 @@ export function useRestoreMediaFiles() {
       return data;
     },
     onSuccess: () => {
-      // Invalidate and refetch media files
+      // Invalidate and refetch media files - use broader query patterns to catch paginated queries
       queryClient.invalidateQueries({ queryKey: ['media_files'] });
       queryClient.invalidateQueries({ queryKey: ['media_files_with_verse_info'] });
+      queryClient.invalidateQueries({ queryKey: ['media_files_by_project_paginated'] });
       queryClient.invalidateQueries({ queryKey: ['deleted_media_files'] });
     },
   });
@@ -924,47 +936,226 @@ export function useMediaFilesVerseTimestamps(mediaFileIds: string[]) {
 }
 
 /**
- * Hook to bulk insert verse timestamps from CSV import
- * Uses upsert to overwrite existing records when duplicates are found
+ * Hook to bulk insert verse timestamps from CSV import with progress tracking
+ * Optimized for large datasets with batching and efficient operations
  */
 export function useBulkInsertVerseTimestamps() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async (verseTimestampsData: Array<{
-      media_file_id: string
-      verse_id: string
-      start_time_seconds: number
-      duration_seconds: number
-    }>) => {
+    mutationFn: async (
+      verseTimestampsData: Array<{
+        media_file_id: string
+        verse_id: string
+        start_time_seconds: number
+        duration_seconds: number
+      }>,
+      options?: {
+        onProgress?: (progress: { completed: number; total: number; phase: string }) => void
+        batchSize?: number
+      }
+    ) => {
+      const { onProgress, batchSize = 1000 } = options || {};
+      const totalRecords = verseTimestampsData.length;
+      
       // Get the current authenticated user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
         throw new Error('User must be authenticated to upload verse timestamps');
       }
+      
+      console.log(`Bulk insert starting for user: ${user.id}`);
 
-      // Prepare data with correct created_by for RLS policy compliance
-      // Note: After schema migration, user.id equals users.id directly
-      const insertData = verseTimestampsData.map(item => ({
+      onProgress?.({ completed: 0, total: totalRecords, phase: 'Checking and removing existing records...' });
+
+      // Step 1: More thorough deletion strategy to avoid RLS issues
+      const mediaFileIds = [...new Set(verseTimestampsData.map(item => item.media_file_id))];
+      const allVerseIds = [...new Set(verseTimestampsData.map(item => item.verse_id))];
+      
+      console.log(`Starting deletion for ${mediaFileIds.length} media files and ${allVerseIds.length} unique verses`);
+      
+      // First, check what records exist that we might conflict with
+      // Use batching to avoid URL length limits with large datasets
+      const existingRecords = [];
+      const mediaFileBatchSize = 100; // Batch size for media files
+      const verseIdSet = new Set(allVerseIds); // For fast filtering
+      
+      for (let i = 0; i < mediaFileIds.length; i += mediaFileBatchSize) {
+        const mediaFileBatch = mediaFileIds.slice(i, i + mediaFileBatchSize);
+        
+        // Query by media files only, then filter by verse IDs in memory to avoid URL length issues
+        const { data: batchData, error: batchError } = await supabase
+          .from('media_files_verses')
+          .select('media_file_id, verse_id, created_by')
+          .in('media_file_id', mediaFileBatch);
+          
+        if (batchError) {
+          console.error(`Error checking existing records batch ${i / mediaFileBatchSize + 1}:`, batchError);
+          throw batchError;
+        }
+        
+        if (batchData) {
+          // Filter to only records that match our target verse IDs
+          const filteredBatchData = batchData.filter(record => verseIdSet.has(record.verse_id));
+          existingRecords.push(...filteredBatchData);
+        }
+      }
+      
+      console.log(`Found ${existingRecords.length} existing records to potentially delete`);
+      
+      if (existingRecords && existingRecords.length > 0) {
+        // Filter to only records created by current user
+        const userOwnedRecords = existingRecords.filter(record => record.created_by === user.id);
+        const otherUsersRecords = existingRecords.filter(record => record.created_by !== user.id);
+        
+        console.log(`User owns ${userOwnedRecords.length} records, ${otherUsersRecords.length} belong to other users`);
+        
+        if (otherUsersRecords.length > 0) {
+          console.warn('Found records owned by other users that will cause conflicts:', otherUsersRecords.slice(0, 5));
+        }
+        
+        // Delete user's own records in smaller, more targeted batches
+        if (userOwnedRecords.length > 0) {
+          const deletePromises = [];
+          const batchSize = 100; // Smaller batches for more reliable deletion
+          
+          for (let i = 0; i < userOwnedRecords.length; i += batchSize) {
+            const batch = userOwnedRecords.slice(i, i + batchSize);
+            const batchMediaFileIds = [...new Set(batch.map(r => r.media_file_id))];
+            const batchVerseIds = [...new Set(batch.map(r => r.verse_id))];
+            
+            const deletePromise = supabase
+              .from('media_files_verses')
+              .delete()
+              .in('media_file_id', batchMediaFileIds)
+              .in('verse_id', batchVerseIds)
+              .eq('created_by', user.id);
+
+            deletePromises.push(deletePromise);
+          }
+
+          const deleteResults = await Promise.all(deletePromises);
+          
+          for (const result of deleteResults) {
+            if (result.error) {
+              console.error('Error deleting existing verse timestamps:', result.error);
+              throw result.error;
+            }
+            // Count doesn't work reliably with RLS, so we'll trust the operation succeeded
+          }
+          
+          console.log(`Deletion completed for ${userOwnedRecords.length} user-owned records`);
+        }
+      }
+
+      onProgress?.({ completed: 0, total: totalRecords, phase: 'Preparing and deduplicating records...' });
+
+      // Step 2: Prepare data with correct created_by for RLS policy compliance
+      const rawInsertData = verseTimestampsData.map(item => ({
         media_file_id: item.media_file_id,
         verse_id: item.verse_id,
         start_time_seconds: parseFloat(item.start_time_seconds.toFixed(2)),
         duration_seconds: parseFloat(item.duration_seconds.toFixed(2)),
         created_by: user.id, // Direct use - user.id now equals users.id
-      }))
+      }));
 
-      // Use upsert to insert new records or update existing ones on conflict
-      // This will overwrite existing records when the unique constraint (media_file_id, verse_id) is violated
-      const { data, error } = await supabase
-        .from('media_files_verses')
-        .upsert(insertData, {
-          onConflict: 'media_file_id,verse_id',
-          ignoreDuplicates: false
-        })
-        .select()
+      // Step 2.5: Deduplicate records to avoid unique constraint violations
+      // Use a Map to ensure unique (media_file_id, verse_id) combinations
+      const deduplicatedMap = new Map<string, typeof rawInsertData[0]>();
+      
+      for (const item of rawInsertData) {
+        const key = `${item.media_file_id}|${item.verse_id}`;
+        if (!deduplicatedMap.has(key)) {
+          deduplicatedMap.set(key, item);
+        }
+        // If duplicate found, we keep the first occurrence (could also keep last by removing this condition)
+      }
+      
+      const insertData = Array.from(deduplicatedMap.values());
+      
+      // Log deduplication results
+      if (rawInsertData.length !== insertData.length) {
+        console.log(`Deduplication: ${rawInsertData.length} -> ${insertData.length} records (removed ${rawInsertData.length - insertData.length} duplicates)`);
+      }
 
-      if (error) throw error
-      return data
+      // Update progress with actual record count after deduplication
+      const actualTotalRecords = insertData.length;
+      onProgress?.({ completed: 0, total: actualTotalRecords, phase: 'Starting batch insert...' });
+
+      // Step 3: Insert in batches to avoid timeouts and memory issues
+      const allResults = [];
+      let completed = 0;
+
+      for (let i = 0; i < insertData.length; i += batchSize) {
+        const batch = insertData.slice(i, i + batchSize);
+        
+        // Try insert first (fastest option)
+        let { data, error } = await supabase
+          .from('media_files_verses')
+          .insert(batch)
+          .select();
+
+        // If insert fails with unique constraint violation, handle individual records
+        if (error && error.code === '23505') {
+          console.log(`Batch ${Math.floor(i / batchSize) + 1}: Insert failed with constraint violation, trying individual inserts...`);
+          
+          const successfulInserts = [];
+          const skippedRecords = [];
+          
+          // Try each record individually to identify which ones conflict
+          for (const record of batch) {
+            try {
+              const { data: singleData, error: singleError } = await supabase
+                .from('media_files_verses')
+                .insert([record])
+                .select();
+                
+              if (singleError) {
+                if (singleError.code === '23505') {
+                  // Constraint violation - record already exists, skip it
+                  console.log(`Skipping duplicate record: ${record.media_file_id}/${record.verse_id}`);
+                  skippedRecords.push(record);
+                } else {
+                  // Other error - this is a real problem
+                  throw singleError;
+                }
+              } else if (singleData) {
+                successfulInserts.push(...singleData);
+              }
+            } catch (recordError) {
+              console.error(`Failed to process record ${record.media_file_id}/${record.verse_id}:`, recordError);
+              throw recordError;
+            }
+          }
+          
+          data = successfulInserts;
+          error = null; // Clear the batch error since we handled it
+          
+          if (skippedRecords.length > 0) {
+            console.log(`Batch ${Math.floor(i / batchSize) + 1}: Successfully inserted ${successfulInserts.length} records, skipped ${skippedRecords.length} duplicates`);
+          }
+        }
+
+        if (error) {
+          console.error(`Error inserting batch ${Math.floor(i / batchSize) + 1}:`, error);
+          throw new Error(`Batch insert failed at record ${i + 1}: ${error.message}`);
+        }
+
+        if (data) {
+          allResults.push(...data);
+        }
+        
+        completed += batch.length;
+        onProgress?.({ 
+          completed, 
+          total: actualTotalRecords, 
+          phase: `Inserting records (${completed}/${actualTotalRecords})...` 
+        });
+      }
+
+      onProgress?.({ completed: actualTotalRecords, total: actualTotalRecords, phase: 'Import completed!' });
+
+      return allResults;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['media_files_verses'] })

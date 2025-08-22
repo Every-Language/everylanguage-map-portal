@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/shared/design-system/hooks/useToast';
-import { useB2UploadStore } from '@/shared/stores/mediaFileUpload';
+import { useR2UploadStore } from '@/shared/stores/mediaFileUpload';
 import { useSelectedProject } from '@/features/dashboard/hooks/useSelectedProject';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useOptimisticMediaFileUpdates } from '@/shared/hooks/query/media-files';
 import type { ProcessedAudioFile } from '@/shared/services/audioFileProcessor';
 
-export function useB2AudioUpload() {
+export function useR2AudioUpload() {
   const { selectedProject } = useSelectedProject();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -24,7 +24,7 @@ export function useB2AudioUpload() {
     setOnUploadComplete,
     setOnBatchComplete,
     resetUploadState,
-  } = useB2UploadStore();
+  } = useR2UploadStore();
 
   // Use refs to store current values and avoid infinite loops
   const selectedProjectRef = useRef(selectedProject);
@@ -64,7 +64,7 @@ export function useB2AudioUpload() {
       }
     };
 
-    const handleBatchComplete = (batchProgress: import('@/shared/services/directUploadService').UploadBatchProgress) => {
+    const handleBatchComplete = (batchProgress: import('@/shared/types/upload').UploadBatchProgress) => {
       console.log('📊 Batch completed:', batchProgress);
       // Additional batch completion logic can be added here
     };
@@ -130,7 +130,7 @@ export function useB2AudioUpload() {
       }
 
       try {
-        console.log('🚀 Starting B2 upload process for', validFiles.length, 'files');
+        console.log('🚀 Starting Cloudflare R2 upload process for', validFiles.length, 'files');
 
         // Add optimistic uploads to show files in table immediately
         if (selectedProject?.id) {
@@ -248,4 +248,7 @@ export function useB2AudioUpload() {
     // Computed values
     hasActiveUpload: isUploading || showProgressToast,
   };
-} 
+}
+
+// Export alias for backward compatibility
+export const useB2AudioUpload = useR2AudioUpload;
