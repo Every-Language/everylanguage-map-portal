@@ -21,8 +21,18 @@ export default function CommunityCheckPage() {
         
         const signedUrl = result.media?.[file.id];
         if (result.success && signedUrl) {
-          // Convert the file to the store's expected type - using type assertion since structures are compatible
-          playFile(file as import('../../../shared/stores/audioPlayer').MediaFileWithVerseInfo, signedUrl);
+          // Use blob URL approach for Safari compatibility
+          try {
+            const blobResponse = await fetch(signedUrl);
+            const blob = await blobResponse.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            
+            // Convert the file to the store's expected type - using type assertion since structures are compatible
+            playFile(file as import('../../../shared/stores/audioPlayer').MediaFileWithVerseInfo, blobUrl);
+          } catch (blobError) {
+            // Fallback to direct URL if blob creation fails
+            playFile(file as import('../../../shared/stores/audioPlayer').MediaFileWithVerseInfo, signedUrl);
+          }
         } else {
           console.error('Failed to get streaming URL');
         }

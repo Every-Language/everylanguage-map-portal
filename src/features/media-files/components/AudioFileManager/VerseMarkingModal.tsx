@@ -347,6 +347,8 @@ export const VerseMarkingModal: React.FC<VerseMarkingModalProps> = ({
             </Alert>
           )}
 
+
+
           {/* Audio Player - Compact */}
           {audioUrl && !isLoadingAudio && (
             <div className="bg-neutral-50 dark:bg-neutral-800 rounded-lg p-3 flex-shrink-0">

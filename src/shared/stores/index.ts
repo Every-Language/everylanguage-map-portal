@@ -61,7 +61,6 @@ export {
 // Store initialization
 export const initializeStores = async () => {
   try {
-    console.log('Initializing Zustand stores...')
     
     // Import initialization functions
     const { initializeTheme } = await import('./ui')
@@ -76,7 +75,6 @@ export const initializeStores = async () => {
     // Initialize project store (load reference data)
     await initializeProjectStore()
     
-    console.log('Zustand stores initialized successfully')
   } catch (error) {
     console.error('Error initializing stores:', error)
     throw error

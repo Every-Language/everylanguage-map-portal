@@ -236,10 +236,7 @@ export function useVerseMarking() {
 
   // Open verse marking modal
   const openModal = useCallback(async (file: MediaFileWithVerseInfo) => {
-    console.log('Opening verse marking modal for file:', file);
-    
     if (!file.id) {
-      console.error('No media file id found for file:', file);
       toast({
         title: 'Error',
         description: 'No media file available for verse marking',
@@ -250,32 +247,36 @@ export function useVerseMarking() {
 
     setIsLoadingAudio(true);
     try {
-      console.log('Getting download URL for media id:', file.id);
-      
       // Get presigned URL by media file ID
       const downloadService = await import('../../../shared/services/downloadService');
       const service = new downloadService.DownloadService();
       const result = await service.getDownloadUrlsById({ mediaFileIds: [file.id] });
       const audioUrl = result.media?.[file.id];
       
-      console.log('Download service by-id result:', result);
-      
       if (result.success && audioUrl) {
-        console.log('Got audio URL:', audioUrl);
-        
-        setCurrentMediaFile(file);
-        setAudioUrl(audioUrl);
-        setIsOpen(true);
+        // Use blob URL approach for Safari compatibility
+        try {
+          const blobResponse = await fetch(audioUrl);
+          const blob = await blobResponse.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          
+          setCurrentMediaFile(file);
+          setAudioUrl(blobUrl);
+          setIsOpen(true);
+        } catch {
+          // Fallback to direct URL if blob creation fails
+          setCurrentMediaFile(file);
+          setAudioUrl(audioUrl);
+          setIsOpen(true);
+        }
       } else {
-        console.error('Failed to get download URL:', result);
         toast({
           title: 'Error',
           description: 'Failed to get audio URL for verse marking',
           variant: 'error'
         });
       }
-    } catch (error) {
-      console.error('Error opening verse marking modal:', error);
+    } catch {
       toast({
         title: 'Error',
         description: 'Failed to open verse marking modal',
@@ -288,6 +289,11 @@ export function useVerseMarking() {
 
   // Close modal
   const closeModal = useCallback(() => {
+    // Clean up blob URL if it exists to prevent memory leaks
+    if (audioUrl && audioUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(audioUrl);
+    }
+    
     setIsOpen(false);
     setCurrentMediaFile(null);
     setAudioUrl(null);
@@ -298,7 +304,7 @@ export function useVerseMarking() {
     // Proactively refetch to update the UI immediately
     queryClient.refetchQueries({ queryKey: ['media_files_by_project_paginated'] });
     queryClient.refetchQueries({ queryKey: ['media_files_with_verse_info'] });
-  }, [queryClient]);
+  }, [audioUrl, queryClient]);
 
   // Save verses function
   const saveVerses = useCallback(async (verses: TempVerse[], totalAudioDuration: number) => {

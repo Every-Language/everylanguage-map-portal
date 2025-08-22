@@ -383,7 +383,17 @@ export function useAudioFileManagement(projectId: string | null) {
           ...file,
           check_status: file.check_status || 'pending'
         } as import('../../../shared/stores/audioPlayer').MediaFileWithVerseInfo;
-        playFile(audioFile, signedUrl);
+        
+        // Use blob URL approach for Safari compatibility
+        try {
+          const blobResponse = await fetch(signedUrl);
+          const blob = await blobResponse.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          playFile(audioFile, blobUrl);
+        } catch (blobError) {
+          // Fallback to direct URL if blob creation fails
+          playFile(audioFile, signedUrl);
+        }
       } else {
         console.error('Failed to get streaming URL');
       }

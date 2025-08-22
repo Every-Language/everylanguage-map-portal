@@ -99,6 +99,13 @@ export const useAudioPlayerStore = create<AudioPlayerState>((set, get) => ({
 
   // Actions
   playFile: (file: MediaFileWithVerseInfo, audioUrl: string) => {
+    const { audioUrl: currentAudioUrl } = get();
+    
+    // Clean up previous blob URL if it exists
+    if (currentAudioUrl && currentAudioUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(currentAudioUrl);
+    }
+    
     set({
       currentFile: file,
       audioUrl,
@@ -129,6 +136,13 @@ export const useAudioPlayerStore = create<AudioPlayerState>((set, get) => ({
   },
 
   closePlayer: () => {
+    const { audioUrl } = get();
+    
+    // Clean up blob URL if it exists
+    if (audioUrl && audioUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(audioUrl);
+    }
+    
     set({
       currentFile: null,
       audioUrl: null,

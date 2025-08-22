@@ -213,6 +213,8 @@ export function CommunityCheckAudioPlayer({ file, onVerseChange }: CommunityChec
 
   // Generate audio URL using download service
   useEffect(() => {
+    let currentBlobUrl: string | null = null;
+    
     const getAudioUrl = async () => {
       if (!file.id) {
         setError('No audio file available');
@@ -230,7 +232,17 @@ export function CommunityCheckAudioPlayer({ file, onVerseChange }: CommunityChec
         const signedUrl = result.media?.[file.id];
         
         if (result.success && signedUrl) {
-          setAudioUrl(signedUrl);
+          // Use blob URL approach for Safari compatibility
+          try {
+            const blobResponse = await fetch(signedUrl);
+            const blob = await blobResponse.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            currentBlobUrl = blobUrl;
+            setAudioUrl(blobUrl);
+          } catch (blobError) {
+            // Fallback to direct URL if blob creation fails
+            setAudioUrl(signedUrl);
+          }
         } else {
           setError('Failed to get audio URL');
         }
@@ -243,7 +255,23 @@ export function CommunityCheckAudioPlayer({ file, onVerseChange }: CommunityChec
     };
 
     getAudioUrl();
+    
+    // Cleanup function to revoke blob URL when component unmounts or file changes
+    return () => {
+      if (currentBlobUrl && currentBlobUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(currentBlobUrl);
+      }
+    };
   }, [file.id]);
+
+  // Additional cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (audioUrl && audioUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(audioUrl);
+      }
+    };
+  }, [audioUrl]);
 
   // Playback speed options
   const speedOptions = [0.5, 0.75, 1, 1.25, 1.5, 2];
