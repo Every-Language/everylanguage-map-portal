@@ -502,7 +502,8 @@ export function VerseTimestampImportModal({
       // Choose batch size based on dataset size
       const batchSize = allVerseTimestamps.length > 10000 ? 500 : allVerseTimestamps.length > 5000 ? 750 : 1000;
       
-      await bulkInsertMutation.mutateAsync(allVerseTimestamps, {
+      await bulkInsertMutation.mutateAsync({
+        verseTimestampsData: allVerseTimestamps,
         onProgress: (progress) => {
           setUploadProgress(progress);
         },

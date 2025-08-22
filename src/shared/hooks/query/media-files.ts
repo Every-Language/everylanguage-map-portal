@@ -943,19 +943,17 @@ export function useBulkInsertVerseTimestamps() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async (
+    mutationFn: async (params: {
       verseTimestampsData: Array<{
         media_file_id: string
         verse_id: string
         start_time_seconds: number
         duration_seconds: number
-      }>,
-      options?: {
-        onProgress?: (progress: { completed: number; total: number; phase: string }) => void
-        batchSize?: number
-      }
-    ) => {
-      const { onProgress, batchSize = 1000 } = options || {};
+      }>
+      onProgress?: (progress: { completed: number; total: number; phase: string }) => void
+      batchSize?: number
+    }) => {
+      const { verseTimestampsData, onProgress, batchSize = 1000 } = params;
       const totalRecords = verseTimestampsData.length;
       
       // Get the current authenticated user
