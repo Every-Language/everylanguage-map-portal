@@ -797,12 +797,9 @@ export async function resolveFullChapterEndVersesBatch(
           chapterCache.set(cacheKey, data.total_verses);
         }
       } else {
-        // Batch query using OR conditions
-        const orConditions: string[] = [];
-        
-        chunk.forEach(chapter => {
-          orConditions.push(`and(books.name.eq.${chapter.book},chapter_number.eq.${chapter.chapter})`);
-        });
+        // Batch query using proper PostgREST syntax
+        // Get unique book names and query all chapters for those books, then filter in memory
+        const uniqueBooks = [...new Set(chunk.map(c => c.book))];
         
         const { data, error } = await supabase
           .from('chapters')
@@ -815,15 +812,25 @@ export async function resolveFullChapterEndVersesBatch(
             )
           `)
           .eq('books.bible_version_id', bibleVersionId)
-          .or(orConditions.join(','));
+          .in('books.name', uniqueBooks);
 
         if (!error && data) {
-          data.forEach(record => {
+          // Filter to only the chapters we actually need
+          const filteredData = data.filter(record => {
+            return chunk.some(chapter => 
+              chapter.book === record.books.name && 
+              chapter.chapter === record.chapter_number
+            );
+          });
+          
+          filteredData.forEach(record => {
             const key = `${record.books.name}-${record.chapter_number}`;
             const cacheKey = `${bibleVersionId}-${record.books.name}-${record.chapter_number}`;
             newChapterData.set(key, record.total_verses);
             chapterCache.set(cacheKey, record.total_verses);
           });
+        } else if (error) {
+          console.error('Database query error:', error);
         }
       }
     }

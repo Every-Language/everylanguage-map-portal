@@ -95,6 +95,12 @@ export function AudioUploadModal({
 
   // Handle file processing
   const handleFilesAdded = useCallback(async (files: File[]) => {
+    // Prevent duplicate processing if already in progress
+    if (isProcessing) {
+      console.log('⚠️ File processing already in progress, skipping duplicate call');
+      return;
+    }
+    
     setIsProcessing(true);
     
     try {
@@ -160,7 +166,7 @@ export function AudioUploadModal({
     } finally {
       setIsProcessing(false);
     }
-  }, [audioProcessor, defaultBibleVersionId, toast]);
+  }, [audioProcessor, defaultBibleVersionId, isProcessing, toast]);
 
   // Update file with book/chapter/verse selections
   const updateFileSelection = useCallback((fileId: string, updates: Partial<ProcessedAudioFile>) => {
