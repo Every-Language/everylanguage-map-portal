@@ -3,6 +3,25 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --app-safe-height: 100dvh;
+}
+
+html, body, #root {
+  height: var(--app-safe-height);
+}
+
+/***** Map adjustments *****/
+.map-bottom-sheet {
+  @apply fixed left-0 right-0 bottom-0 z-20 rounded-t-2xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-2xl;
+}
+
+@media (min-width: 768px) {
+  .map-side-panel {
+    @apply absolute right-4 top-24 w-[360px] rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white/95 dark:bg-neutral-900/95 shadow-lg;
+  }
+}
+
 @layer base {
   html {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;

@@ -19,13 +19,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@components/*": ["./src/components/*"],
-      "@pages/*": ["./src/pages/*"],
-      "@hooks/*": ["./src/hooks/*"],
-      "@utils/*": ["./src/utils/*"],
-      "@types/*": ["./src/types/*"],
-      "@services/*": ["./src/services/*"],
-      "@assets/*": ["./src/assets/*"]
+      
     },
 
     /* Linting */
@@ -35,5 +29,14 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/app/pages/**",
+    "src/features/**",
+    "!src/features/map/**",
+    "src/shared/components/**",
+    "src/shared/hooks/query/**",
+    "src/shared/stores/**",
+    "src/shared/lib/**"
+  ]
 }
