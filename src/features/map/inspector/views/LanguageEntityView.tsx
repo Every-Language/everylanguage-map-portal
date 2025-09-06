@@ -2,8 +2,14 @@ import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/shared/services/supabase'
 import { useMapContext } from '../../context/MapContext'
-import { useSetSelection } from '../state/inspectorStore'
+import { useSelection, useSetSelection } from '../state/inspectorStore'
 import { bboxOf, unionBbox } from '../utils/geo'
+import { useNavigate } from 'react-router-dom'
+import { fetchAudioVersionCoveragesForLanguageIds, fetchTextVersionCoveragesForLanguageIds, maxCoveragePercent } from '@/features/bible-content/queries/progress'
+import Fuse from 'fuse.js'
+import { Input } from '@/shared/components/ui/Input'
+import { RegionCard } from '@/shared/components/RegionCard'
+import { Search as SearchIcon } from 'lucide-react'
 
 interface LanguageEntityViewProps { id: string }
 
@@ -12,7 +18,10 @@ type LanguageProperty = { id: string; key: string; value: string }
 
 export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) => {
   const { fitBounds } = useMapContext()
-  const setSelection = useSetSelection()
+  const setSelection = useSetSelection(); void setSelection
+  const navigate = useNavigate()
+  const selection = useSelection()
+  const [query, setQuery] = React.useState('')
 
   const entityQuery = useQuery({
     queryKey: ['language_entity', id],
@@ -24,6 +33,30 @@ export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) =>
         .single()
       if (error) throw error
       return data as LanguageEntity
+    }
+  })
+
+  // Fetch descendants (children at all depths) plus self to aggregate data across the whole language family
+  const descendantsQuery = useQuery({
+    queryKey: ['language-descendants', id],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_language_entity_hierarchy', {
+        entity_id: id,
+        generations_up: 0,
+        generations_down: 6,
+      })
+      if (error) throw error
+      const rows = (data ?? []) as Array<{
+        hierarchy_entity_id: string
+        relationship_type: 'self' | 'ancestor' | 'descendant' | 'sibling'
+      }>
+      const ids = new Set<string>()
+      for (const r of rows) {
+        if (r.relationship_type === 'self' || r.relationship_type === 'descendant') ids.add(r.hierarchy_entity_id)
+      }
+      // Ensure self id is present even if hierarchy function returns empty
+      ids.add(id)
+      return Array.from(ids)
     }
   })
 
@@ -40,21 +73,47 @@ export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) =>
   })
 
   const regionsQuery = useQuery({
-    queryKey: ['language_regions', id],
+    enabled: !!descendantsQuery.data,
+    queryKey: ['language_regions_aggregated', id, descendantsQuery.data?.join(',')],
     queryFn: async () => {
+      const langIds = descendantsQuery.data ?? [id]
       const { data, error } = await supabase
         .from('language_entities_regions')
         .select('regions(id,name,level,boundary)')
-        .eq('language_entity_id', id)
+        .in('language_entity_id', langIds)
       if (error) throw error
-      // Supabase client returns 'unknown' for JSON; cast after runtime filtering
-      return (data ?? []).map((r: { regions: { id: string; name: string; level: string; boundary: unknown } }) => ({
+      const items = (data ?? []).map((r: { regions: { id: string; name: string; level: string; boundary: unknown } }) => ({
         id: r.regions.id,
         name: r.regions.name,
         level: r.regions.level,
         boundary: (r.regions.boundary ?? null) as GeoJSON.Geometry | null,
       }))
+      // Deduplicate by region id
+      const dedup = new Map<string, { id: string; name: string; level: string; boundary: GeoJSON.Geometry | null }>()
+      for (const it of items) if (!dedup.has(it.id)) dedup.set(it.id, it)
+      return Array.from(dedup.values())
     }
+  })
+
+  const filteredRegions = React.useMemo(() => {
+    const items = regionsQuery.data ?? []
+    const trimmed = query.trim()
+    if (!trimmed) return items
+    const fuse = new Fuse(items, { keys: ['name'], threshold: 0.35, ignoreLocation: true })
+    return fuse.search(trimmed).map(r => r.item)
+  }, [regionsQuery.data, query])
+
+  // Bible translation progress (best versions per language, then summaries)
+  // All versions with summaries (for progress ring + table)
+  const audioVersions = useQuery({
+    enabled: !!descendantsQuery.data,
+    queryKey: ['all-audio-coverages-aggregated', id, descendantsQuery.data?.join(',')],
+    queryFn: () => fetchAudioVersionCoveragesForLanguageIds(descendantsQuery.data ?? [id])
+  })
+  const textVersions = useQuery({
+    enabled: !!descendantsQuery.data,
+    queryKey: ['all-text-coverages-aggregated', id, descendantsQuery.data?.join(',')],
+    queryFn: () => fetchTextVersionCoveragesForLanguageIds(descendantsQuery.data ?? [id])
   })
 
   // Focus map on union of region boundaries (robust to different shapes)
@@ -62,7 +121,7 @@ export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) =>
     const boxes = (regionsQuery.data ?? [])
       .map(r => r.boundary)
       .filter(Boolean)
-      .map((g) => bboxOf(g as any))
+      .map((g) => bboxOf(g as GeoJSON.Geometry))
       .filter((b): b is [number, number, number, number] => !!b)
     const box = unionBbox(boxes)
     if (box) fitBounds(box, { padding: 80, maxZoom: 7 })
@@ -70,14 +129,10 @@ export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) =>
 
   if (entityQuery.isLoading) return <div>Loading language…</div>
   if (entityQuery.error) return <div className="text-red-600">Failed to load language.</div>
-  const entity = entityQuery.data!
 
   return (
     <div className="space-y-4">
-      <div>
-        <div className="text-lg font-semibold">{entity.name}</div>
-        <div className="text-xs uppercase tracking-wide text-neutral-500">{entity.level}</div>
-      </div>
+      
 
       <div>
         <div className="font-semibold mb-1">Stats</div>
@@ -91,18 +146,142 @@ export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) =>
 
       <div>
         <div className="font-semibold mb-1">Countries</div>
-        <ul className="text-sm space-y-1">
-          {regionsQuery.data?.map(r => (
-            <li key={r.id}>
-              <button className="underline" onClick={() => setSelection({ kind: 'region', id: r.id }, { pushRoute: true, focusMap: true })}>
-                {r.name}
-              </button>
-            </li>
+        <div className="mb-2">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search countries…"
+            leftIcon={<SearchIcon className="w-4 h-4" />}
+            size="sm"
+          />
+        </div>
+        <div className="grid grid-cols-1 gap-2">
+          {filteredRegions.map(r => (
+            <RegionCard
+              key={r.id}
+              region={{ id: r.id, name: r.name, level: r.level }}
+              isSelected={selection?.kind === 'region' && selection.id === r.id}
+              onClick={(rid) => navigate(`/map/region/${encodeURIComponent(rid)}`)}
+            />
           ))}
-          {regionsQuery.data?.length === 0 && <li className="text-neutral-500">No linked countries</li>}
-        </ul>
+          {(regionsQuery.data?.length ?? 0) > 0 && filteredRegions.length === 0 && (
+            <div className="text-sm text-neutral-500">No countries match "{query}"</div>
+          )}
+          {(regionsQuery.data?.length ?? 0) === 0 && (
+            <div className="text-sm text-neutral-500">No linked countries (including descendants)</div>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div className="font-semibold mb-1">Bible Translation Progress</div>
+        <div className="space-y-3">
+          {/* Audio */}
+          <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
+            <div className="text-sm font-medium mb-2">Audio</div>
+            <div className="flex items-center gap-4">
+              <ProgressRing value={Math.round((audioVersions.data && audioVersions.data.length > 0 ? Math.max(...audioVersions.data.map(maxCoveragePercent)) : 0) * 100)} />
+              <div className="text-sm text-neutral-500">Progress</div>
+            </div>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-neutral-500">
+                    <th className="py-1 pr-3">Version</th>
+                    <th className="py-1 pr-3">Books</th>
+                    <th className="py-1 pr-3">Chapters</th>
+                    <th className="py-1">Verses</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {audioVersions.data?.map(v => (
+                    <tr key={v.id} className="border-t border-neutral-200 dark:border-neutral-800">
+                      <td className="py-1 pr-3">{v.name}</td>
+                      <td className="py-1 pr-3">{v.books_complete ?? 0} / {v.books_total ?? 0}</td>
+                      <td className="py-1 pr-3">{v.chapters_complete ?? 0} / {v.chapters_total ?? 0}</td>
+                      <td className="py-1">{v.verses_complete ?? 0} / {v.verses_total ?? 0}</td>
+                    </tr>
+                  ))}
+                  {audioVersions.data?.length === 0 && (
+                    <tr><td className="py-2 text-neutral-500" colSpan={4}>No audio versions</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {/* Text */}
+          <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
+            <div className="text-sm font-medium mb-2">Text</div>
+            <div className="flex items-center gap-4">
+              <ProgressRing value={Math.round((textVersions.data && textVersions.data.length > 0 ? Math.max(...textVersions.data.map(maxCoveragePercent)) : 0) * 100)} />
+              <div className="text-sm text-neutral-500">Progress</div>
+            </div>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-neutral-500">
+                    <th className="py-1 pr-3">Version</th>
+                    <th className="py-1 pr-3">Books</th>
+                    <th className="py-1 pr-3">Chapters</th>
+                    <th className="py-1">Verses</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {textVersions.data?.map(v => (
+                    <tr key={v.id} className="border-t border-neutral-200 dark:border-neutral-800">
+                      <td className="py-1 pr-3">{v.name}</td>
+                      <td className="py-1 pr-3">{v.books_complete ?? 0} / {v.books_total ?? 0}</td>
+                      <td className="py-1 pr-3">{v.chapters_complete ?? 0} / {v.chapters_total ?? 0}</td>
+                      <td className="py-1">{v.verses_complete ?? 0} / {v.verses_total ?? 0}</td>
+                    </tr>
+                  ))}
+                  {textVersions.data?.length === 0 && (
+                    <tr><td className="py-2 text-neutral-500" colSpan={4}>No text versions</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
+  )
+}
+
+const ProgressRing: React.FC<{ value: number }> = ({ value }) => {
+  const clamped = Math.max(0, Math.min(100, value))
+  const radius = 28
+  const stroke = 7
+  const normalizedRadius = radius - stroke
+  const circumference = normalizedRadius * 2 * Math.PI
+  const strokeDashoffset = circumference - (clamped / 100) * circumference
+  return (
+    <svg height={radius * 2} width={radius * 2} className="shrink-0">
+      <circle
+        stroke="currentColor"
+        fill="transparent"
+        strokeWidth={stroke}
+        strokeOpacity={0.2}
+        r={normalizedRadius}
+        cx={radius}
+        cy={radius}
+      />
+      <circle
+        className="text-accent-600"
+        stroke="currentColor"
+        fill="transparent"
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={`${circumference} ${circumference}`}
+        style={{ strokeDashoffset, transition: 'stroke-dashoffset 0.4s ease' }}
+        r={normalizedRadius}
+        cx={radius}
+        cy={radius}
+      />
+      <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" className="text-sm fill-current">
+        {clamped}%
+      </text>
+    </svg>
   )
 }
 
