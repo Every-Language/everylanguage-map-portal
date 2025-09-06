@@ -36,7 +36,7 @@
     "!src/features/map/**",
     "src/shared/components/**",
     "src/shared/hooks/query/**",
-    "src/shared/stores/**",
+    "src/shared/theme/**",
     "src/shared/lib/**"
   ]
 }

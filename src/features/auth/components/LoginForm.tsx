@@ -154,7 +154,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         <div>
           <Button
             type="submit"
-            className="w-full bg-gradient-to-r from-accent-600 to-accent-600 hover:from-accent-600 hover:to-accent-700 dark:from-accent-600 dark:to-accent-600 dark:hover:from-accent-700 dark:hover:to-accent-700 text-white shadow-lg"
+            className="w-full bg-accent-600 hover:bg-accent-600 text-white shadow-lg"
             disabled={isLoading}
             size="lg"
             loading={isLoading}

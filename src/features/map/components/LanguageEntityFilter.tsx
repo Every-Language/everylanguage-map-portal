@@ -1,11 +1,18 @@
 import React from 'react';
 import { useMapContext } from '../context/MapContext';
+import { useSetSelection } from '../inspector/state/inspectorStore'
+import { useNavigate } from 'react-router-dom'
 
-interface LanguageEntityFilterProps {}
+interface LanguageEntityFilterProps {
+  className?: string
+  embedded?: boolean
+}
 
-export const LanguageEntityFilter: React.FC<LanguageEntityFilterProps> = () => {
+export const LanguageEntityFilter: React.FC<LanguageEntityFilterProps> = ({ className, embedded }) => {
   const { flyTo } = useMapContext();
   const [selected, setSelected] = React.useState<string[]>([]);
+  const setSelection = useSetSelection()
+  const navigate = useNavigate()
 
   const examples = [
     { id: 'kabyle', name: 'Kabyle', center: { longitude: 3.05, latitude: 36.7, zoom: 5 } },
@@ -16,11 +23,15 @@ export const LanguageEntityFilter: React.FC<LanguageEntityFilterProps> = () => {
   const onPick = (id: string) => {
     const found = examples.find(x => x.id === id);
     if (found) flyTo(found.center);
+    // Example of driving inspector via selection
+    // This demo does not use real IDs
+    setSelection({ kind: 'language_entity', id }, { pushRoute: true, focusMap: true })
+    navigate(`/map/language/${encodeURIComponent(id)}`)
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
-  return (
-    <div className="absolute left-4 top-4 md:left-4 md:top-4 right-4 md:right-auto rounded-xl bg-white/90 dark:bg-neutral-900/90 border border-neutral-200 dark:border-neutral-700 shadow p-3 md:w-auto">
+  const content = (
+    <div className={`rounded-xl bg-white/90 dark:bg-neutral-900/90 border border-neutral-200 dark:border-neutral-700 shadow p-3 ${className ?? ''}`}>
       <div className="text-sm font-medium mb-2">Languages</div>
       <div className="flex flex-wrap gap-2">
         {examples.map(x => (
@@ -34,5 +45,13 @@ export const LanguageEntityFilter: React.FC<LanguageEntityFilterProps> = () => {
         ))}
       </div>
     </div>
-  );
+  )
+
+  if (embedded) return content
+
+  return (
+    <div className="absolute left-4 top-4 right-4 md:right-auto md:left-4 md:top-4 md:w-auto">
+      {content}
+    </div>
+  )
 };
