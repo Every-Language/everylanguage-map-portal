@@ -16,7 +16,7 @@ export const MapProvider: React.FC<{ mapRef: React.MutableRefObject<MapRef | nul
 
     // Mark user interaction to avoid fighting their camera; reset on programmatic moves
     React.useEffect(() => {
-      const map = mapRef.current?.getMap?.() as any
+      const map = mapRef.current?.getMap?.()
       if (!map) return
       const onUserMoveStart = () => { userInteractedRef.current = true }
       map.on?.('dragstart', onUserMoveStart)
@@ -41,7 +41,7 @@ export const MapProvider: React.FC<{ mapRef: React.MutableRefObject<MapRef | nul
         const { box, recommendFlyTo } = normalizeBboxForMap(bbox)
         const perform = () => {
           // Stop any in-flight animations before starting a new camera op
-          try { (map as unknown as { stop?: () => void }).stop?.() } catch {}
+          try { (map as unknown as { stop?: () => void }).stop?.() } catch { /* noop */ }
           const getLngLat = () => {
             try { return (map as unknown as { getCenter?: () => { lng: number; lat: number } }).getCenter?.() } catch { return undefined }
           }
@@ -73,14 +73,14 @@ export const MapProvider: React.FC<{ mapRef: React.MutableRefObject<MapRef | nul
               const dZ = Math.abs(afterZoom - beforeZoom)
               if (dLng < 0.0001 && dLat < 0.0001 && dZ < 0.01) {
                 const [cx, cy] = centerOfBbox(box)
-                try { (map as unknown as { stop?: () => void }).stop?.() } catch {}
+                try { (map as unknown as { stop?: () => void }).stop?.() } catch { /* noop */ }
                 map.flyTo({ center: [cx, cy], zoom: Math.min(opts?.maxZoom ?? 8, 7), essential: true })
               }
             }
           }, 450)
         }
 
-        const underlying = (map as unknown as { getMap?: () => any }).getMap?.()
+        const underlying = (map as unknown as { getMap?: () => { isStyleLoaded?: () => boolean; once?: (ev: string, fn: () => void) => void; isMoving?: () => boolean; isZooming?: () => boolean; isRotating?: () => boolean } }).getMap?.()
         if (underlying && typeof underlying.isStyleLoaded === 'function' && !underlying.isStyleLoaded()) {
           underlying.once?.('style.load', perform)
         } else if (underlying && (underlying.isMoving?.() || underlying.isZooming?.() || underlying.isRotating?.())) {
@@ -91,7 +91,7 @@ export const MapProvider: React.FC<{ mapRef: React.MutableRefObject<MapRef | nul
           requestAnimationFrame(perform)
         }
       } catch {
-        // no-op
+        // no-op: camera ops are best-effort
       }
     }, [mapRef]);
 

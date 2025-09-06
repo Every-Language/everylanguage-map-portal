@@ -1,4 +1,4 @@
-import type { SupabaseError } from '../hooks/query/base-hooks'
+import type { PostgrestError } from '@supabase/supabase-js'
 
 // Error types for different categories
 export enum ErrorType {
@@ -55,7 +55,7 @@ const errorCodeMap: Record<string, ErrorType> = {
 export function processQueryError(error: unknown): ProcessedError {
   // Handle SupabaseError
   if (error && typeof error === 'object' && 'message' in error) {
-    const supabaseError = error as SupabaseError
+    const supabaseError = error as PostgrestError
     const errorType = supabaseError.code ? errorCodeMap[supabaseError.code] || ErrorType.UNKNOWN : ErrorType.UNKNOWN
     
     return {

@@ -33,12 +33,56 @@ export const RegionView: React.FC<RegionViewProps> = ({ id }) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('regions')
-        .select('id,name,level,boundary')
+        .select('id,name,level')
         .eq('id', id)
         .single()
       if (error) throw error
       return data as RegionRow
     },
+  })
+
+  // Prefer a lightweight bbox RPC if available to avoid fetching heavy geometries
+  const regionBboxQuery = useQuery({
+    queryKey: ['region_bbox', id],
+    queryFn: async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase as any).rpc('get_region_bbox', { region_id: id })
+        if (error || !data) return null as [number, number, number, number] | null
+        if (Array.isArray(data) && data.length === 4) {
+          const nums = data.map((n: unknown) => Number(n))
+          if (nums.every((n: number) => Number.isFinite(n))) return nums as [number, number, number, number]
+        }
+        if (typeof data === 'object') {
+          const obj = data as Record<string, unknown>
+          const minx = Number(obj.minx)
+          const miny = Number(obj.miny)
+          const maxx = Number(obj.maxx)
+          const maxy = Number(obj.maxy)
+          if ([minx, miny, maxx, maxy].every((n) => Number.isFinite(n))) return [minx, miny, maxx, maxy] as [number, number, number, number]
+        }
+        return null as [number, number, number, number] | null
+      } catch {
+        return null as [number, number, number, number] | null
+      }
+    },
+    staleTime: 300_000,
+  })
+
+  // Fallback to fetching boundary only if bbox RPC isn't available
+  const regionBoundaryQuery = useQuery({
+    enabled: regionBboxQuery.isFetched && !regionBboxQuery.data,
+    queryKey: ['region_boundary', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('regions')
+        .select('boundary')
+        .eq('id', id)
+        .single()
+      if (error) return null
+      return (data?.boundary ?? null) as unknown | null
+    },
+    staleTime: 300_000,
   })
 
   const propsQuery = useQuery({
@@ -90,13 +134,18 @@ export const RegionView: React.FC<RegionViewProps> = ({ id }) => {
     return fuse.search(trimmed).map(r => r.item)
   }, [langsQuery.data, query])
 
-  // Focus map on mount/update with robust bbox from geometry structure
+  // Focus map using lightweight bbox when available, otherwise fall back to boundary
   React.useEffect(() => {
-    const boundary = regionQuery.data?.boundary as unknown
+    const bbox = regionBboxQuery.data
+    if (bbox) {
+      fitBounds(bbox, { padding: 60, maxZoom: 7 })
+      return
+    }
+    const boundary = regionBoundaryQuery.data
     if (!boundary) return
     const box = bboxOf(boundary as any)
     if (box) fitBounds(box, { padding: 60, maxZoom: 7 })
-  }, [regionQuery.data, fitBounds])
+  }, [regionBboxQuery.data, regionBoundaryQuery.data, fitBounds])
 
   if (regionQuery.isLoading) return <div>Loading region…</div>
   if (regionQuery.error) return <div className="text-red-600">Failed to load region.</div>
