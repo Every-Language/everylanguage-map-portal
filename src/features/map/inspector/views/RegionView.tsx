@@ -9,6 +9,7 @@ import Fuse from 'fuse.js'
 import { Input } from '@/shared/components/ui/Input'
 import { LanguageCard } from '@/shared/components/LanguageCard'
 import { Search as SearchIcon } from 'lucide-react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 
 interface RegionViewProps { id: string }
 
@@ -17,6 +18,7 @@ type RegionRow = {
   name: string
   level: string
   boundary: unknown | null
+  aliases: string[]
 }
 
 type RegionProperty = { id: string; key: string; value: string }
@@ -33,11 +35,15 @@ export const RegionView: React.FC<RegionViewProps> = ({ id }) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('regions')
-        .select('id,name,level')
+        .select('id,name,level,region_aliases(alias_name)')
         .eq('id', id)
         .single()
       if (error) throw error
-      return data as RegionRow
+      const row = data as unknown as { id: string; name: string; level: string; region_aliases?: Array<{ alias_name: string | null }> }
+      const aliases = (row.region_aliases ?? [])
+        .map(a => a.alias_name)
+        .filter((v): v is string => !!v)
+      return { id: row.id, name: row.name, level: row.level, boundary: null, aliases } as RegionRow
     },
   })
 
@@ -47,42 +53,39 @@ export const RegionView: React.FC<RegionViewProps> = ({ id }) => {
     queryFn: async () => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (supabase as any).rpc('get_region_bbox', { region_id: id })
+        const { data, error } = await (supabase as any).rpc('get_region_bbox_by_id', { p_region_id: id })
         if (error || !data) return null as [number, number, number, number] | null
-        if (Array.isArray(data) && data.length === 4) {
-          const nums = data.map((n: unknown) => Number(n))
-          if (nums.every((n: number) => Number.isFinite(n))) return nums as [number, number, number, number]
-        }
-        if (typeof data === 'object') {
-          const obj = data as Record<string, unknown>
-          const minx = Number(obj.minx)
-          const miny = Number(obj.miny)
-          const maxx = Number(obj.maxx)
-          const maxy = Number(obj.maxy)
-          if ([minx, miny, maxx, maxy].every((n) => Number.isFinite(n))) return [minx, miny, maxx, maxy] as [number, number, number, number]
-        }
+        const row = Array.isArray(data) && data.length > 0 ? data[0] as { min_lon?: number; min_lat?: number; max_lon?: number; max_lat?: number } : null
+        if (!row) return null
+        const minx = Number(row.min_lon)
+        const miny = Number(row.min_lat)
+        const maxx = Number(row.max_lon)
+        const maxy = Number(row.max_lat)
+        if ([minx, miny, maxx, maxy].every((n) => Number.isFinite(n))) return [minx, miny, maxx, maxy] as [number, number, number, number]
         return null as [number, number, number, number] | null
       } catch {
         return null as [number, number, number, number] | null
       }
     },
-    staleTime: 300_000,
+    staleTime: 30 * 60 * 1000,
   })
 
   // Fallback to fetching boundary only if bbox RPC isn't available
   const regionBoundaryQuery = useQuery({
     enabled: regionBboxQuery.isFetched && !regionBboxQuery.data,
-    queryKey: ['region_boundary', id],
+    queryKey: ['region_boundary_simplified', id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('regions')
-        .select('boundary')
-        .eq('id', id)
-        .single()
-      if (error) return null
-      return (data?.boundary ?? null) as unknown | null
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase as any).rpc('get_region_boundary_simplified_by_id', { p_region_id: id, p_tolerance: null })
+        if (error || !data) return null
+        const row = Array.isArray(data) && data.length > 0 ? data[0] as { boundary?: unknown } : null
+        return (row?.boundary ?? null) as unknown | null
+      } catch {
+        return null as unknown | null
+      }
     },
-    staleTime: 300_000,
+    staleTime: 30 * 60 * 1000,
   })
 
   const propsQuery = useQuery({
@@ -100,30 +103,13 @@ export const RegionView: React.FC<RegionViewProps> = ({ id }) => {
   const langsQuery = useQuery({
     queryKey: ['region_languages', id],
     queryFn: async () => {
-      // Fetch descendant regions including self
-      const { data: hier, error: hierErr } = await supabase.rpc('get_region_hierarchy', {
-        region_id: id,
-        generations_up: 0,
-        generations_down: 6,
-      })
-      if (hierErr) throw hierErr
-      const rows = (hier ?? []) as Array<{ hierarchy_region_id: string; relationship_type: 'self' | 'ancestor' | 'descendant' | 'sibling' }>
-      const regionIds = new Set<string>([id])
-      for (const r of rows) {
-        if (r.relationship_type === 'self' || r.relationship_type === 'descendant') regionIds.add(r.hierarchy_region_id)
-      }
-
-      const { data, error } = await supabase
-        .from('language_entities_regions')
-        .select('language_entities(id,name,level),region_id')
-        .in('region_id', Array.from(regionIds))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc('list_languages_for_region', { p_region_id: id, p_include_descendants: true })
       if (error) throw error
-      const items = (data ?? []).map((row: { language_entities: { id: string; name: string; level: string } }) => row.language_entities)
-      // Deduplicate languages by id
-      const byId = new Map<string, { id: string; name: string; level: string }>()
-      for (const l of items) if (!byId.has(l.id)) byId.set(l.id, l)
-      return Array.from(byId.values())
+      const items = (data ?? []) as Array<{ id: string; name: string; level: string }>
+      return items
     },
+    staleTime: 10 * 60 * 1000,
   })
 
   const filteredLanguages = React.useMemo(() => {
@@ -134,6 +120,16 @@ export const RegionView: React.FC<RegionViewProps> = ({ id }) => {
     return fuse.search(trimmed).map(r => r.item)
   }, [langsQuery.data, query])
 
+  // Virtualize languages list when large
+  const useVirtual = (filteredLanguages.length > 50)
+  const parentRef = React.useRef<HTMLDivElement | null>(null)
+  const rowVirtualizer = useVirtualizer({
+    count: useVirtual ? filteredLanguages.length : 0,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 72,
+    overscan: 10,
+  })
+
   // Focus map using lightweight bbox when available, otherwise fall back to boundary
   React.useEffect(() => {
     const bbox = regionBboxQuery.data
@@ -143,7 +139,7 @@ export const RegionView: React.FC<RegionViewProps> = ({ id }) => {
     }
     const boundary = regionBoundaryQuery.data
     if (!boundary) return
-    const box = bboxOf(boundary as any)
+    const box = bboxOf(boundary as GeoJSON.Feature | GeoJSON.FeatureCollection | GeoJSON.Geometry)
     if (box) fitBounds(box, { padding: 60, maxZoom: 7 })
   }, [regionBboxQuery.data, regionBoundaryQuery.data, fitBounds])
 
@@ -152,7 +148,14 @@ export const RegionView: React.FC<RegionViewProps> = ({ id }) => {
 
   return (
     <div className="space-y-4">
-      
+      <div>
+        <div className="font-semibold mb-1">Also known as</div>
+        {regionQuery.data?.aliases.length ? (
+          <div className="text-sm">{regionQuery.data.aliases.join(', ')}</div>
+        ) : (
+          <div className="text-sm text-neutral-500">No alternate names</div>
+        )}
+      </div>
 
       <div>
         <div className="font-semibold mb-1">Stats</div>
@@ -175,22 +178,41 @@ export const RegionView: React.FC<RegionViewProps> = ({ id }) => {
             size="sm"
           />
         </div>
-        <div className="grid grid-cols-1 gap-2">
-          {filteredLanguages.map(l => (
-            <LanguageCard
-              key={l.id}
-              language={{ id: l.id, name: l.name, level: l.level }}
-              isSelected={selection?.kind === 'language_entity' && selection.id === l.id}
-              onClick={(lid) => navigate(`/map/language/${encodeURIComponent(lid)}`)}
-            />
-          ))}
-          {(langsQuery.data?.length ?? 0) > 0 && filteredLanguages.length === 0 && (
-            <div className="text-sm text-neutral-500">No languages match "{query}"</div>
-          )}
-          {(langsQuery.data?.length ?? 0) === 0 && (
-            <div className="text-sm text-neutral-500">No linked languages</div>
-          )}
-        </div>
+        {useVirtual ? (
+          <div ref={parentRef} className="relative h-[360px] overflow-auto">
+            <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>
+              {rowVirtualizer.getVirtualItems().map(v => {
+                const l = filteredLanguages[v.index]
+                return (
+                  <div key={l.id} className="absolute top-0 left-0 w-full p-0.5" style={{ transform: `translateY(${v.start}px)` }}>
+                    <LanguageCard
+                      language={{ id: l.id, name: l.name, level: l.level }}
+                      isSelected={selection?.kind === 'language_entity' && selection.id === l.id}
+                      onClick={(lid) => navigate(`/map/language/${encodeURIComponent(lid)}`)}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-2">
+            {filteredLanguages.map(l => (
+              <LanguageCard
+                key={l.id}
+                language={{ id: l.id, name: l.name, level: l.level }}
+                isSelected={selection?.kind === 'language_entity' && selection.id === l.id}
+                onClick={(lid) => navigate(`/map/language/${encodeURIComponent(lid)}`)}
+              />
+            ))}
+          </div>
+        )}
+        {(langsQuery.data?.length ?? 0) > 0 && filteredLanguages.length === 0 && (
+          <div className="text-sm text-neutral-500">No languages match "{query}"</div>
+        )}
+        {(langsQuery.data?.length ?? 0) === 0 && (
+          <div className="text-sm text-neutral-500">No linked languages</div>
+        )}
       </div>
     </div>
   )

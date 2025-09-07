@@ -8,12 +8,13 @@ import { useNavigate } from 'react-router-dom'
 import { fetchAudioVersionCoveragesForLanguageIds, fetchTextVersionCoveragesForLanguageIds, maxCoveragePercent } from '@/features/bible-content/queries/progress'
 import Fuse from 'fuse.js'
 import { Input } from '@/shared/components/ui/Input'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { RegionCard } from '@/shared/components/RegionCard'
 import { Search as SearchIcon } from 'lucide-react'
 
 interface LanguageEntityViewProps { id: string }
 
-type LanguageEntity = { id: string; name: string; level: string }
+type LanguageEntity = { id: string; name: string; level: string; aliases: string[] }
 type LanguageProperty = { id: string; key: string; value: string }
 
 export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) => {
@@ -28,11 +29,15 @@ export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) =>
     queryFn: async () => {
       const { data, error } = await supabase
         .from('language_entities')
-        .select('id,name,level')
+        .select('id,name,level,language_aliases(alias_name)')
         .eq('id', id)
         .single()
       if (error) throw error
-      return data as LanguageEntity
+      const row = data as unknown as { id: string; name: string; level: string; language_aliases?: Array<{ alias_name: string | null }> }
+      const aliases = (row.language_aliases ?? [])
+        .map(a => a.alias_name)
+        .filter((v): v is string => !!v)
+      return { id: row.id, name: row.name, level: row.level, aliases } as LanguageEntity
     }
   })
 
@@ -56,7 +61,9 @@ export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) =>
       }
       // Ensure self id is present even if hierarchy function returns empty
       ids.add(id)
-      return Array.from(ids)
+      const arr = Array.from(ids)
+      arr.sort() // stabilize
+      return arr
     }
   })
 
@@ -103,6 +110,16 @@ export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) =>
     return fuse.search(trimmed).map(r => r.item)
   }, [regionsQuery.data, query])
 
+  // Virtualize regions list when large
+  const useVirtual = (filteredRegions.length > 50)
+  const parentRef = React.useRef<HTMLDivElement | null>(null)
+  const rowVirtualizer = useVirtualizer({
+    count: useVirtual ? filteredRegions.length : 0,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 92,
+    overscan: 10,
+  })
+
   // Bible translation progress (best versions per language, then summaries)
   // All versions with summaries (for progress ring + table)
   const audioVersions = useQuery({
@@ -132,7 +149,14 @@ export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) =>
 
   return (
     <div className="space-y-4">
-      
+      <div>
+        <div className="font-semibold mb-1">Also known as</div>
+        {entityQuery.data?.aliases.length ? (
+          <div className="text-sm">{entityQuery.data.aliases.join(', ')}</div>
+        ) : (
+          <div className="text-sm text-neutral-500">No alternate names</div>
+        )}
+      </div>
 
       <div>
         <div className="font-semibold mb-1">Stats</div>
@@ -155,22 +179,43 @@ export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) =>
             size="sm"
           />
         </div>
-        <div className="grid grid-cols-1 gap-2">
-          {filteredRegions.map(r => (
-            <RegionCard
-              key={r.id}
-              region={{ id: r.id, name: r.name, level: r.level }}
-              isSelected={selection?.kind === 'region' && selection.id === r.id}
-              onClick={(rid) => navigate(`/map/region/${encodeURIComponent(rid)}`)}
-            />
-          ))}
-          {(regionsQuery.data?.length ?? 0) > 0 && filteredRegions.length === 0 && (
-            <div className="text-sm text-neutral-500">No countries match "{query}"</div>
-          )}
-          {(regionsQuery.data?.length ?? 0) === 0 && (
-            <div className="text-sm text-neutral-500">No linked countries (including descendants)</div>
-          )}
-        </div>
+        {useVirtual ? (
+          <div ref={parentRef} className="relative h-[360px] overflow-auto">
+            <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>
+              {rowVirtualizer.getVirtualItems().map(v => {
+                const r = filteredRegions[v.index]
+                return (
+                  <div key={r.id} className="absolute top-0 left-0 w-full p-0.5" style={{ transform: `translateY(${v.start}px)` }}>
+                    <RegionCard
+                      region={{ id: r.id, name: r.name, level: r.level }}
+                      isSelected={selection?.kind === 'region' && selection.id === r.id}
+                      onClick={(rid) => navigate(`/map/region/${encodeURIComponent(rid)}`)}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="max-h-[360px] overflow-auto">
+            <div className="grid grid-cols-1 gap-2">
+              {filteredRegions.map(r => (
+                <RegionCard
+                  key={r.id}
+                  region={{ id: r.id, name: r.name, level: r.level }}
+                  isSelected={selection?.kind === 'region' && selection.id === r.id}
+                  onClick={(rid) => navigate(`/map/region/${encodeURIComponent(rid)}`)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        {(regionsQuery.data?.length ?? 0) > 0 && filteredRegions.length === 0 && (
+          <div className="text-sm text-neutral-500">No countries match "{query}"</div>
+        )}
+        {(regionsQuery.data?.length ?? 0) === 0 && (
+          <div className="text-sm text-neutral-500">No linked countries (including descendants)</div>
+        )}
       </div>
 
       <div>

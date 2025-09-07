@@ -7,6 +7,98 @@ import { ProjectView } from '../views/ProjectView'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/shared/services/supabase'
 
+// Simple fade-in on mount. Use with a `key` to animate on key changes.
+const FadeOnMount: React.FC<{ children: React.ReactNode; className?: string; durationMs?: number }> = ({ children, className, durationMs = 180 }) => {
+  const ref = React.useRef<HTMLDivElement | null>(null)
+  React.useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    // Start hidden, then fade in next frame
+    el.style.opacity = '0'
+    el.style.transform = 'translateY(4px)'
+    el.style.willChange = 'opacity, transform'
+    const id = requestAnimationFrame(() => {
+      el.style.transition = `opacity ${durationMs}ms ease, transform ${durationMs}ms ease`
+      el.style.opacity = '1'
+      el.style.transform = 'translateY(0)'
+    })
+    return () => cancelAnimationFrame(id)
+  }, [durationMs])
+  return (
+    <div ref={ref} className={className}>
+      {children}
+    </div>
+  )
+}
+
+// Convenience wrapper to fade content whenever the switchKey changes
+const FadeSwitch: React.FC<{ switchKey: React.Key; children: React.ReactNode; className?: string; durationMs?: number }> = ({ switchKey, children, className, durationMs }) => {
+  return (
+    <FadeOnMount key={switchKey} className={className} durationMs={durationMs}>
+      {children}
+    </FadeOnMount>
+  )
+}
+
+// Skeleton primitives
+const SkeletonLine: React.FC<{ className?: string }> = ({ className }) => (
+  <div className={`h-3 rounded bg-neutral-200 dark:bg-neutral-800 animate-pulse ${className ?? ''}`} />
+)
+
+const HeaderSkeleton: React.FC<{ onBack: () => void }> = ({ onBack }) => (
+  <div className="flex items-center gap-3">
+    <button onClick={onBack} aria-label="Back" className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800">←</button>
+    <div className="flex flex-col gap-2">
+      <SkeletonLine className="w-20" />
+      <div className="h-5 rounded bg-neutral-200 dark:bg-neutral-800 animate-pulse w-40" />
+    </div>
+  </div>
+)
+
+const BodySkeleton: React.FC = () => (
+  <div className="flex flex-col gap-3">
+    <div className="flex gap-2">
+      <div className="h-4 w-24 rounded bg-neutral-200 dark:bg-neutral-800 animate-pulse" />
+      <div className="h-4 w-16 rounded bg-neutral-200 dark:bg-neutral-800 animate-pulse" />
+    </div>
+    <SkeletonLine className="w-3/4" />
+    <SkeletonLine className="w-full" />
+    <SkeletonLine className="w-5/6" />
+    <SkeletonLine className="w-1/2" />
+    <SkeletonLine className="w-2/3" />
+    <SkeletonLine className="w-3/5" />
+  </div>
+)
+
+const TreeSkeleton: React.FC<{ bare?: boolean }> = ({ bare }) => (
+  bare ? (
+    <div className="pt-1 flex flex-col gap-2">
+      <SkeletonLine className="w-3/4" />
+      <SkeletonLine className="w-2/3" />
+      <div className="ml-4 border-l border-neutral-200 dark:border-neutral-800 pl-2 flex flex-col gap-2">
+        <SkeletonLine className="w-4/5" />
+        <SkeletonLine className="w-3/5" />
+      </div>
+      <SkeletonLine className="w-1/2" />
+    </div>
+  ) : (
+    <div className="mb-2">
+      <div className="sticky top-0 z-10 bg-white dark:bg-neutral-900 -mx-3 -mt-3 px-3 py-2 border-b border-neutral-200 dark:border-neutral-800">
+        <div className="text-xs font-semibold tracking-wide text-neutral-500">Loading relationships…</div>
+      </div>
+      <div className="pt-2 flex flex-col gap-2">
+        <SkeletonLine className="w-3/4" />
+        <SkeletonLine className="w-2/3" />
+        <div className="ml-4 border-l border-neutral-200 dark:border-neutral-800 pl-2 flex flex-col gap-2">
+          <SkeletonLine className="w-4/5" />
+          <SkeletonLine className="w-3/5" />
+        </div>
+        <SkeletonLine className="w-1/2" />
+      </div>
+    </div>
+  )
+)
+
 const PanelBody: React.FC = () => {
   const selection = useSelection()
   if (!selection) {
@@ -32,7 +124,7 @@ export const HierarchySection: React.FC = () => {
   return null
 }
 
-const LanguageHierarchy: React.FC<{ entityId: string }> = ({ entityId }) => {
+export const LanguageHierarchy: React.FC<{ entityId: string; bare?: boolean }> = ({ entityId, bare }) => {
   const { data, isLoading, error } = useQuery({
     queryKey: ['lang-hier', entityId],
     queryFn: async () => {
@@ -64,13 +156,16 @@ const LanguageHierarchy: React.FC<{ entityId: string }> = ({ entityId }) => {
     return map
   }, [data])
 
-  if (isLoading) return null
+  if (isLoading) return <TreeSkeleton bare={bare} />
   if (error) return null
   // Root is the top-most ancestor (generation_distance negative min) or self if no ancestors
   const self = data!.find(r => r.relationship_type === 'self')
   const ancestors = data!.filter(r => r.relationship_type === 'ancestor')
   const rootId = ancestors.length > 0 ? ancestors.reduce((min, r) => (r.generation_distance < min.generation_distance ? r : min)).hierarchy_entity_id : self?.hierarchy_entity_id
 
+  if (bare) {
+    return <div>{rootId && <Tree id={rootId} nodesById={nodesById} kind="language" />}</div>
+  }
   return (
     <div className="mb-2">
       <div className="sticky top-0 z-10 bg-white dark:bg-neutral-900 -mx-3 -mt-3 px-3 py-2 border-b border-neutral-200 dark:border-neutral-800">
@@ -83,7 +178,7 @@ const LanguageHierarchy: React.FC<{ entityId: string }> = ({ entityId }) => {
   )
 }
 
-const RegionHierarchy: React.FC<{ regionId: string }> = ({ regionId }) => {
+export const RegionHierarchy: React.FC<{ regionId: string; bare?: boolean }> = ({ regionId, bare }) => {
   const { data, isLoading, error } = useQuery({
     queryKey: ['region-hier', regionId],
     queryFn: async () => {
@@ -116,12 +211,15 @@ const RegionHierarchy: React.FC<{ regionId: string }> = ({ regionId }) => {
     return map
   }, [data])
 
-  if (isLoading) return null
+  if (isLoading) return <TreeSkeleton bare={bare} />
   if (error) return null
   const self = data!.find(r => r.relationship_type === 'self')
   const ancestors = data!.filter(r => r.relationship_type === 'ancestor')
   const rootId = ancestors.length > 0 ? ancestors.reduce((min, r) => (r.generation_distance < min.generation_distance ? r : min)).hierarchy_region_id : self?.hierarchy_region_id
 
+  if (bare) {
+    return <div>{rootId && <Tree id={rootId} nodesById={nodesById} kind="region" />}</div>
+  }
   return (
     <div className="mb-2">
       <div className="sticky top-0 z-10 bg-white dark:bg-neutral-900 -mx-3 -mt-3 px-3 py-2 border-b border-neutral-200 dark:border-neutral-800">
@@ -229,17 +327,32 @@ export const MapInspectorPanel: React.FC = () => {
     }
   })
 
+  const isRegion = !!selectionForKey && selectionForKey.kind === 'region'
+  const isLanguage = !!selectionForKey && selectionForKey.kind === 'language_entity'
+  const isProject = !!selectionForKey && selectionForKey.kind === 'project'
+  const isHeaderLoading = (
+    (isRegion && (regionHeader.isLoading || (!regionHeader.data && regionHeader.isFetching))) ||
+    (isLanguage && (languageHeader.isLoading || (!languageHeader.data && languageHeader.isFetching))) ||
+    (isProject && (projectHeader.isLoading || (!projectHeader.data && projectHeader.isFetching)))
+  )
+
   const headerTitle = regionHeader.data?.name || languageHeader.data?.name || projectHeader.data?.name || 'Details'
   const headerSubtitle = selectionForKey ? (selectionForKey.kind === 'language_entity' ? 'LANGUAGE' : selectionForKey.kind.toUpperCase()) : ''
 
-  const header = (
-    <div className="flex items-center gap-3">
-      <button onClick={() => navigate(-1)} aria-label="Back" className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800">←</button>
-      <div>
-        <div className="text-xs uppercase tracking-wide text-neutral-500">{headerSubtitle}</div>
-        <div className="text-lg font-semibold leading-tight">{headerTitle}</div>
-      </div>
-    </div>
+  const headerNode = (
+    <FadeSwitch switchKey={selectionKey}>
+      {isHeaderLoading ? (
+        <HeaderSkeleton onBack={() => navigate(-1)} />
+      ) : (
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate(-1)} aria-label="Back" className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800">←</button>
+          <div>
+            <div className="text-xs uppercase tracking-wide text-neutral-500">{headerSubtitle}</div>
+            <div className="text-lg font-semibold leading-tight">{headerTitle}</div>
+          </div>
+        </div>
+      )}
+    </FadeSwitch>
   )
 
   // Desktop panel
@@ -248,16 +361,28 @@ export const MapInspectorPanel: React.FC = () => {
       {/* Desktop inspector: grows to content until max height, then scrolls internally */}
       <div className="hidden md:flex flex-col absolute right-4 top-4 w-[420px] max-h-[calc(100dvh-2rem)] rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white/95 dark:bg-neutral-900/95 shadow-xl overflow-hidden">
         <div className="flex-none px-3 py-2 border-b border-neutral-200 dark:border-neutral-800">
-          {header}
+          {headerNode}
         </div>
         <div className="flex-auto overflow-y-auto p-4">
-          <PanelBody key={selectionKey} />
+          {isHeaderLoading ? (
+            <BodySkeleton />
+          ) : (
+            <FadeSwitch switchKey={selectionKey}>
+              <PanelBody key={selectionKey} />
+            </FadeSwitch>
+          )}
         </div>
       </div>
 
       {/* Mobile bottom sheet */}
-      <MobileBottomSheet header={header}>
-        <PanelBody key={selectionKey} />
+      <MobileBottomSheet header={headerNode}>
+        {isHeaderLoading ? (
+          <BodySkeleton />
+        ) : (
+          <FadeSwitch switchKey={selectionKey}>
+            <PanelBody key={selectionKey} />
+          </FadeSwitch>
+        )}
       </MobileBottomSheet>
     </>
   )

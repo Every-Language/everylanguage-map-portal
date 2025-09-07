@@ -4,6 +4,8 @@ import * as maplibregl from 'maplibre-gl';
 import type { Map as MLMap, ProjectionSpecification } from 'maplibre-gl';
 import { useTheme } from '@/shared/theme';
 import { MapProvider } from '../context/MapContext';
+import { supabase } from '@/shared/services/supabase';
+import { useNavigate } from 'react-router-dom';
 
 // MapLibre CSS should be imported by the app's CSS pipeline or here
 // import 'maplibre-gl/dist/maplibre-gl.css';
@@ -15,6 +17,7 @@ interface MapShellProps {
 export const MapShell: React.FC<MapShellProps> = ({ children }) => {
   const mapRef = React.useRef<MapRef | null>(null);
   const { resolvedTheme } = useTheme();
+  const navigate = useNavigate();
 
   const setProjection = (map: MLMap, globe: boolean) => {
     const projection: ProjectionSpecification = globe ? { type: 'globe' } : { type: 'mercator' };
@@ -86,6 +89,29 @@ export const MapShell: React.FC<MapShellProps> = ({ children }) => {
     applyAtmosphere(map, resolvedTheme);
   }, [resolvedTheme, applyAtmosphere]);
 
+  const handleMapClick = React.useCallback(async (e: maplibregl.MapLayerMouseEvent) => {
+    try {
+      const { lng, lat } = e.lngLat;
+      type SupabaseRpcLike = { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }> };
+      const { data, error } = await (supabase as unknown as SupabaseRpcLike).rpc('get_region_minimal_by_point', {
+        lon: lng,
+        lat,
+        lookup_level: 'country',
+      });
+      if (error) {
+        console.error('get_region_minimal_by_point error', error);
+        return;
+      }
+      const row = Array.isArray(data) && data.length > 0 ? data[0] as { id?: string | null } : null;
+      if (row?.id) {
+        navigate(`/map/region/${encodeURIComponent(row.id)}`);
+      }
+      // If no match (e.g., ocean), do nothing
+    } catch (err) {
+      console.error('Map click handler failed', err);
+    }
+  }, [navigate]);
+
   return (
     <MapProvider mapRef={mapRef}>
       <div className="relative h-[100dvh] w-full">
@@ -96,6 +122,7 @@ export const MapShell: React.FC<MapShellProps> = ({ children }) => {
           style={{ width: '100%', height: '100%' }}
           mapStyle={mapStyleUrl}
           onLoad={handleMapLoad}
+          onClick={handleMapClick}
         >
           <NavigationControl position="bottom-right" />
           {children}
