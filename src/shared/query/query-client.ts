@@ -24,8 +24,8 @@ export const queryClient = new QueryClient({
       
       // Background refetching
       refetchOnWindowFocus: false, // Prevent excessive refetching
-      refetchOnMount: 'ifStale',
-      refetchOnReconnect: 'ifStale',
+      refetchOnMount: true,
+      refetchOnReconnect: true,
       
       // Error handling
       throwOnError: false,
