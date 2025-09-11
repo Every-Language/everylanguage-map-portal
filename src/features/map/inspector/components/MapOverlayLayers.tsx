@@ -6,7 +6,7 @@ import { supabase } from '@/shared/services/supabase'
 import { useLanguageOverlayGeometries, useRegionBoundary } from '../hooks/overlay'
 
 // Minimal overlay that highlights the selected region or the union of regions for a language.
-export const MapOverlayLayers: React.FC = () => {
+export const MapOverlayLayers: React.FC<{ countriesEnabled?: boolean }> = ({ countriesEnabled = true }) => {
   const selection = useSelection()
 
   const projectRegionIdQuery = useQuery({
@@ -33,7 +33,7 @@ export const MapOverlayLayers: React.FC = () => {
     for (const g of langRegionsQuery.data) features.push({ type: 'Feature', geometry: g, properties: {} })
   }
 
-  if (!features.length) return null
+  if (!countriesEnabled || !features.length) return null
 
   const fc: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features }
 

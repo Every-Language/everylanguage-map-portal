@@ -6,18 +6,23 @@ import { useTheme } from '@/shared/theme';
 import { MapProvider } from '../context/MapContext';
 import { supabase } from '@/shared/services/supabase';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '@/shared/theme/hooks/useToast';
 
 // MapLibre CSS should be imported by the app's CSS pipeline or here
 // import 'maplibre-gl/dist/maplibre-gl.css';
 
 interface MapShellProps {
   children?: React.ReactNode;
+  countriesEnabled?: boolean;
 }
 
-export const MapShell: React.FC<MapShellProps> = ({ children }) => {
+export const MapShell: React.FC<MapShellProps> = ({ children, countriesEnabled = true }) => {
   const mapRef = React.useRef<MapRef | null>(null);
   const { resolvedTheme } = useTheme();
   const navigate = useNavigate();
+  const { toast } = useToast();
+
+  // No interactiveLayerIds to ensure clicks fire everywhere; we'll filter features manually
 
   const setProjection = (map: MLMap, globe: boolean) => {
     const projection: ProjectionSpecification = globe ? { type: 'globe' } : { type: 'mercator' };
@@ -91,6 +96,21 @@ export const MapShell: React.FC<MapShellProps> = ({ children }) => {
 
   const handleMapClick = React.useCallback(async (e: maplibregl.MapLayerMouseEvent) => {
     try {
+      if (!countriesEnabled) {
+        const map = mapRef.current?.getMap() as unknown as MLMap | undefined;
+        if (!map) return;
+        const features = map.queryRenderedFeatures(e.point);
+        const hasInteractable = features.some((f) => {
+          const layerId = (f as unknown as { layer?: { id?: string } }).layer?.id || '';
+          // Treat existing analytics layers as interactable, suppress toast
+          return layerId.includes('listens-heatmap') || layerId.includes('region-listens');
+        });
+        if (!hasInteractable) {
+          toast({ description: 'Turn on the countries layer to see country borders', duration: 3000, variant: 'info' });
+        }
+        return;
+      }
+
       const { lng, lat } = e.lngLat;
       type SupabaseRpcLike = { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }> };
       const { data, error } = await (supabase as unknown as SupabaseRpcLike).rpc('get_region_minimal_by_point', {
@@ -110,7 +130,7 @@ export const MapShell: React.FC<MapShellProps> = ({ children }) => {
     } catch (err) {
       console.error('Map click handler failed', err);
     }
-  }, [navigate]);
+  }, [countriesEnabled, navigate, toast]);
 
   return (
     <MapProvider mapRef={mapRef}>

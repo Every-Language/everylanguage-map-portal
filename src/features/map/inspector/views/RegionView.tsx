@@ -2,14 +2,19 @@ import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/shared/services/supabase'
 import { useMapContext } from '../../context/MapContext'
-import { useSelection, useSetSelection } from '../state/inspectorStore'
-import { useNavigate } from 'react-router-dom'
+import { useSetSelection } from '../state/inspectorStore'
+// import { useNavigate } from 'react-router-dom'
 import { bboxOf } from '../utils/geo'
-import Fuse from 'fuse.js'
-import { Input } from '@/shared/components/ui/Input'
-import { LanguageCard } from '@/shared/components/LanguageCard'
-import { Search as SearchIcon } from 'lucide-react'
+// import Fuse from 'fuse.js'
+// import { Input } from '@/shared/components/ui/Input'
+// import { LanguageCard } from '@/shared/components/LanguageCard'
+// import { Search as SearchIcon } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { DataTable, type Column } from '@/shared/components/ui/DataTable'
+import {
+  fetchRegionUsageByLanguageMV,
+  fetchLanguageNames,
+} from '@/features/map/analytics/api'
 
 interface RegionViewProps { id: string }
 
@@ -26,9 +31,6 @@ type RegionProperty = { id: string; key: string; value: string }
 export const RegionView: React.FC<RegionViewProps> = ({ id }) => {
   const { fitBounds } = useMapContext()
   const setSelection = useSetSelection(); void setSelection
-  const navigate = useNavigate()
-  const selection = useSelection()
-  const [query, setQuery] = React.useState('')
 
   const regionQuery = useQuery({
     queryKey: ['region', id],
@@ -112,23 +114,17 @@ export const RegionView: React.FC<RegionViewProps> = ({ id }) => {
     staleTime: 10 * 60 * 1000,
   })
 
-  const filteredLanguages = React.useMemo(() => {
-    const items = langsQuery.data ?? []
-    const trimmed = query.trim()
-    if (!trimmed) return items
-    const fuse = new Fuse(items, { keys: ['name'], threshold: 0.35, ignoreLocation: true })
-    return fuse.search(trimmed).map(r => r.item)
-  }, [langsQuery.data, query])
+  const filteredLanguages = React.useMemo(() => (langsQuery.data ?? []), [langsQuery.data])
 
   // Virtualize languages list when large
-  const useVirtual = (filteredLanguages.length > 50)
-  const parentRef = React.useRef<HTMLDivElement | null>(null)
+  const useVirtual = (filteredLanguages.length > 50); void useVirtual
+  const parentRef = React.useRef<HTMLDivElement | null>(null); void parentRef
   const rowVirtualizer = useVirtualizer({
-    count: useVirtual ? filteredLanguages.length : 0,
+    count: 0,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 72,
     overscan: 10,
-  })
+  }); void rowVirtualizer
 
   // Focus map using lightweight bbox when available, otherwise fall back to boundary
   React.useEffect(() => {
@@ -167,52 +163,70 @@ export const RegionView: React.FC<RegionViewProps> = ({ id }) => {
         </ul>
       </div>
 
+      {/* Moved languages list to left column */}
+
+      <RegionAnalyticsTables regionId={id} />
+    </div>
+  )
+}
+
+const RegionAnalyticsTables: React.FC<{ regionId: string }> = ({ regionId }) => {
+  const includeDescendants = true
+
+  const usage = useQuery({
+    queryKey: ['region-usage-mv', regionId, includeDescendants],
+    queryFn: () => fetchRegionUsageByLanguageMV(regionId),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Map language ids to names for better display
+  const languageIds = React.useMemo(() => {
+    const ids = new Set<string>()
+    for (const r of (usage.data ?? [])) ids.add(r.language_entity_id)
+    return Array.from(ids)
+  }, [usage.data])
+  const namesQuery = useQuery({
+    enabled: languageIds.length > 0,
+    queryKey: ['language-names', languageIds.join(',')],
+    queryFn: () => fetchLanguageNames(languageIds),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  type CombinedRow = { language_entity_id: string; language: string; downloads: number; listened_minutes: number; top_chapters: string }
+  const combinedCols: Column<CombinedRow>[] = [
+    { key: 'language', header: 'Language', sortable: true },
+    { key: 'downloads', header: 'Users', sortable: true },
+    { key: 'listened_minutes', header: 'Listen Time', sortable: true },
+    { key: 'top_chapters', header: 'Popular Chapters' },
+  ]
+
+  const combinedRowsAll: CombinedRow[] = React.useMemo(() => {
+    const src = usage.data ?? []
+    const rows: CombinedRow[] = src.map(r => ({
+      language_entity_id: r.language_entity_id,
+      language: namesQuery.data?.[r.language_entity_id] ?? r.language_entity_id,
+      downloads: Number(r.downloads_total ?? 0),
+      listened_minutes: Math.round(Number(r.listened_total_seconds ?? 0) / 60),
+      top_chapters: (r.top_chapters ?? []).join(', '),
+    }))
+    rows.sort((a, b) => (b.downloads ?? 0) - (a.downloads ?? 0))
+    return rows
+  }, [usage.data, namesQuery.data])
+
+  const topCombinedRows = React.useMemo(() => combinedRowsAll.slice(0, 5), [combinedRowsAll])
+
+  return (
+    <div className="space-y-4">
+      <div className="font-semibold">Bible listening data</div>
+
       <div>
-        <div className="font-semibold mb-1">Languages</div>
-        <div className="mb-2">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search languages…"
-            leftIcon={<SearchIcon className="w-4 h-4" />}
-            size="sm"
-          />
-        </div>
-        {useVirtual ? (
-          <div ref={parentRef} className="relative h-[360px] overflow-auto">
-            <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>
-              {rowVirtualizer.getVirtualItems().map(v => {
-                const l = filteredLanguages[v.index]
-                return (
-                  <div key={l.id} className="absolute top-0 left-0 w-full p-0.5" style={{ transform: `translateY(${v.start}px)` }}>
-                    <LanguageCard
-                      language={{ id: l.id, name: l.name, level: l.level }}
-                      isSelected={selection?.kind === 'language_entity' && selection.id === l.id}
-                      onClick={(lid) => navigate(`/map/language/${encodeURIComponent(lid)}`)}
-                    />
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-2">
-            {filteredLanguages.map(l => (
-              <LanguageCard
-                key={l.id}
-                language={{ id: l.id, name: l.name, level: l.level }}
-                isSelected={selection?.kind === 'language_entity' && selection.id === l.id}
-                onClick={(lid) => navigate(`/map/language/${encodeURIComponent(lid)}`)}
-              />
-            ))}
-          </div>
-        )}
-        {(langsQuery.data?.length ?? 0) > 0 && filteredLanguages.length === 0 && (
-          <div className="text-sm text-neutral-500">No languages match "{query}"</div>
-        )}
-        {(langsQuery.data?.length ?? 0) === 0 && (
-          <div className="text-sm text-neutral-500">No linked languages</div>
-        )}
+        <DataTable
+          data={topCombinedRows}
+          columns={combinedCols}
+          searchable={false}
+          loading={usage.isLoading || namesQuery.isLoading}
+          emptyMessage="No usage data"
+        />
       </div>
     </div>
   )

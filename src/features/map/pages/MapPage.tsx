@@ -4,12 +4,15 @@ import { MapInspectorPanel } from '../inspector/components/MapInspectorPanel'
 import { LanguageHierarchy, RegionHierarchy } from '../inspector/components/MapInspectorPanel'
 import { useSelection } from '../inspector/state/inspectorStore'
 import { MapOverlayLayers } from '../inspector/components/MapOverlayLayers'
-import { LayerToggles } from '../components/LayerToggles';
+// import { LayerToggles } from '../components/LayerToggles';
 import { MapSearchBar } from '../components/MapSearchBar';
 import { LeftColumn } from '../components/LeftColumn';
 import { RouteSync } from '../inspector/components/RouteSync';
+import { MapAnalyticsLayers } from '../analytics/MapAnalyticsLayers'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/shared/services/supabase'
+import { LinkedLanguagesPanel } from '../components/LinkedLanguagesPanel'
+import { LinkedRegionsPanel } from '../components/LinkedRegionsPanel'
 
 // Minimal fade wrapper copied from inspector for left panel reuse
 const FadeOnMount: React.FC<{ children: React.ReactNode; className?: string; durationMs?: number }> = ({ children, className, durationMs = 180 }) => {
@@ -101,12 +104,14 @@ export const MapPage: React.FC = () => {
   )
   const selectionKey = selection ? `${selection.kind}:${selection.id}` : 'none'
   return (
-    <MapShell>
+    <MapShell countriesEnabled={layers.countries}>
       <RouteSync />
       <MapSearchBar />
-      <MapOverlayLayers />
+      <MapOverlayLayers countriesEnabled={layers.countries} />
+      {/* Render analytics after overlay so heatmap sits on top visually */}
+      <MapAnalyticsLayers show={layers.listening} />
       {/* Left column: width matches inspector (420px) and stacks panels */}
-      <LeftColumn>
+      <LeftColumn layers={layers} onLayersChange={setLayers}>
         <div className="flex flex-col rounded-xl bg-white/90 dark:bg-neutral-900/90 backdrop-blur border border-neutral-200 dark:border-neutral-800 shadow-card dark:shadow-dark-card max-h-[60vh] overflow-hidden">
           <div className="flex-none px-3 py-2 border-b border-neutral-200 dark:border-neutral-800">
             <FadeSwitch switchKey={selectionKey}>
@@ -120,7 +125,7 @@ export const MapPage: React.FC = () => {
               )}
             </FadeSwitch>
           </div>
-          <div className="flex-auto min-h-0 overflow-y-auto p-3">
+          <div className="flex-auto min-h-0 overflow-y-auto p-3 space-y-3" id="left-scroll">
             {isLeftLoading ? (
               <LeftBodySkeleton />
             ) : (
@@ -131,9 +136,15 @@ export const MapPage: React.FC = () => {
                 </div>
               </FadeSwitch>
             )}
+            {/* Linked panels */}
+            {selection?.kind === 'region' && (
+              <LinkedLanguagesPanel regionId={selection.id} scrollRef={{ current: document.getElementById('left-scroll') as HTMLDivElement | null }} />
+            )}
+            {selection?.kind === 'language_entity' && (
+              <LinkedRegionsPanel languageId={selection.id} scrollRef={{ current: document.getElementById('left-scroll') as HTMLDivElement | null }} />
+            )}
           </div>
         </div>
-        <LayerToggles embedded value={layers} onChange={setLayers} className="p-3" />
       </LeftColumn>
       <MapInspectorPanel />
     </MapShell>

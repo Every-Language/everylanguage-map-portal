@@ -2,15 +2,19 @@ import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/shared/services/supabase'
 import { useMapContext } from '../../context/MapContext'
-import { useSelection, useSetSelection } from '../state/inspectorStore'
+import { useSetSelection } from '../state/inspectorStore'
 import { bboxOf, unionBbox } from '../utils/geo'
-import { useNavigate } from 'react-router-dom'
+// import { useNavigate } from 'react-router-dom'
 import { fetchAudioVersionCoveragesForLanguageIds, fetchTextVersionCoveragesForLanguageIds, maxCoveragePercent } from '@/features/bible-content/queries/progress'
-import Fuse from 'fuse.js'
-import { Input } from '@/shared/components/ui/Input'
+// import Fuse from 'fuse.js'
+// import { Input } from '@/shared/components/ui/Input'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { RegionCard } from '@/shared/components/RegionCard'
-import { Search as SearchIcon } from 'lucide-react'
+// import { RegionCard } from '@/shared/components/RegionCard'
+// import { Search as SearchIcon } from 'lucide-react'
+import {
+  fetchLanguageUsageByCountryMV,
+} from '@/features/map/analytics/api'
+import { DataTable, type Column } from '@/shared/components/ui/DataTable'
 
 interface LanguageEntityViewProps { id: string }
 
@@ -20,9 +24,6 @@ type LanguageProperty = { id: string; key: string; value: string }
 export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) => {
   const { fitBounds } = useMapContext()
   const setSelection = useSetSelection(); void setSelection
-  const navigate = useNavigate()
-  const selection = useSelection()
-  const [query, setQuery] = React.useState('')
 
   const entityQuery = useQuery({
     queryKey: ['language_entity', id],
@@ -102,23 +103,17 @@ export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) =>
     }
   })
 
-  const filteredRegions = React.useMemo(() => {
-    const items = regionsQuery.data ?? []
-    const trimmed = query.trim()
-    if (!trimmed) return items
-    const fuse = new Fuse(items, { keys: ['name'], threshold: 0.35, ignoreLocation: true })
-    return fuse.search(trimmed).map(r => r.item)
-  }, [regionsQuery.data, query])
+  const filteredRegions = React.useMemo(() => (regionsQuery.data ?? []), [regionsQuery.data])
 
   // Virtualize regions list when large
-  const useVirtual = (filteredRegions.length > 50)
-  const parentRef = React.useRef<HTMLDivElement | null>(null)
+  const useVirtual = (filteredRegions.length > 50); void useVirtual
+  const parentRef = React.useRef<HTMLDivElement | null>(null); void parentRef
   const rowVirtualizer = useVirtualizer({
-    count: useVirtual ? filteredRegions.length : 0,
+    count: 0,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 92,
     overscan: 10,
-  })
+  }); void rowVirtualizer
 
   // Bible translation progress (best versions per language, then summaries)
   // All versions with summaries (for progress ring + table)
@@ -168,55 +163,7 @@ export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) =>
         </ul>
       </div>
 
-      <div>
-        <div className="font-semibold mb-1">Countries</div>
-        <div className="mb-2">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search countries…"
-            leftIcon={<SearchIcon className="w-4 h-4" />}
-            size="sm"
-          />
-        </div>
-        {useVirtual ? (
-          <div ref={parentRef} className="relative h-[360px] overflow-auto">
-            <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>
-              {rowVirtualizer.getVirtualItems().map(v => {
-                const r = filteredRegions[v.index]
-                return (
-                  <div key={r.id} className="absolute top-0 left-0 w-full p-0.5" style={{ transform: `translateY(${v.start}px)` }}>
-                    <RegionCard
-                      region={{ id: r.id, name: r.name, level: r.level }}
-                      isSelected={selection?.kind === 'region' && selection.id === r.id}
-                      onClick={(rid) => navigate(`/map/region/${encodeURIComponent(rid)}`)}
-                    />
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        ) : (
-          <div className="max-h-[360px] overflow-auto">
-            <div className="grid grid-cols-1 gap-2">
-              {filteredRegions.map(r => (
-                <RegionCard
-                  key={r.id}
-                  region={{ id: r.id, name: r.name, level: r.level }}
-                  isSelected={selection?.kind === 'region' && selection.id === r.id}
-                  onClick={(rid) => navigate(`/map/region/${encodeURIComponent(rid)}`)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-        {(regionsQuery.data?.length ?? 0) > 0 && filteredRegions.length === 0 && (
-          <div className="text-sm text-neutral-500">No countries match "{query}"</div>
-        )}
-        {(regionsQuery.data?.length ?? 0) === 0 && (
-          <div className="text-sm text-neutral-500">No linked countries (including descendants)</div>
-        )}
-      </div>
+      {/* Moved countries list to left column */}
 
       <div>
         <div className="font-semibold mb-1">Bible Translation Progress</div>
@@ -288,6 +235,71 @@ export const LanguageEntityView: React.FC<LanguageEntityViewProps> = ({ id }) =>
             </div>
           </div>
         </div>
+      </div>
+
+      <LanguageAnalyticsTables languageId={id} descendantLanguageIds={descendantsQuery.data ?? [id]} />
+    </div>
+  )
+}
+
+const LanguageAnalyticsTables: React.FC<{ languageId: string; descendantLanguageIds: string[] }> = ({ languageId, descendantLanguageIds }) => {
+  const [showDescendants, setShowDescendants] = React.useState(true)
+  const langIds = React.useMemo(() => (showDescendants ? descendantLanguageIds : [languageId]), [showDescendants, descendantLanguageIds, languageId])
+
+  const downloads = useQuery({
+    enabled: langIds.length > 0,
+    queryKey: ['analytics-language-usage-mv', languageId, showDescendants, langIds.join(',')],
+    queryFn: () => fetchLanguageUsageByCountryMV(langIds),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const toCountryName = React.useCallback((code: string | null) => {
+    if (!code) return 'Unknown'
+    const map: Record<string, string> = { US: 'United States', GB: 'United Kingdom', AU: 'Australia', CA: 'Canada', IN: 'India' }
+    return map[code] ?? code
+  }, [])
+
+  type CombinedRow = { country_code: string | null; country: string; downloads: number; listened_minutes: number; top_chapters: string }
+  const combinedCols: Column<CombinedRow>[] = [
+    { key: 'country', header: 'Country', sortable: true },
+    { key: 'downloads', header: 'Users', sortable: true },
+    { key: 'listened_minutes', header: 'Listen Time', sortable: true },
+    { key: 'top_chapters', header: 'Popular Chapters' },
+  ]
+
+  const combinedRowsAll: CombinedRow[] = React.useMemo(() => {
+    const src = downloads.data ?? []
+    const rows: CombinedRow[] = src.map(r => ({
+      country_code: r.country_code,
+      country: toCountryName(r.country_code),
+      downloads: Number(r.downloads_total ?? 0),
+      listened_minutes: Math.round(Number(r.listened_total_seconds ?? 0) / 60),
+      top_chapters: (r.top_chapters ?? []).join(', '),
+    }))
+    rows.sort((a, b) => (b.downloads ?? 0) - (a.downloads ?? 0))
+    return rows
+  }, [downloads.data, toCountryName])
+
+  const topCombinedRows = React.useMemo(() => combinedRowsAll.slice(0, 5), [combinedRowsAll])
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="font-semibold">Bible listening data</div>
+        <label className="text-xs flex items-center gap-2">
+          <input type="checkbox" checked={showDescendants} onChange={(e) => setShowDescendants(e.target.checked)} />
+          Include descendant languages
+        </label>
+      </div>
+
+      <div>
+        <DataTable
+          data={topCombinedRows}
+          columns={combinedCols}
+          searchable={false}
+          loading={downloads.isLoading}
+          emptyMessage="No usage data"
+        />
       </div>
     </div>
   )
