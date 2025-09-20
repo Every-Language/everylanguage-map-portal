@@ -1,7 +1,5 @@
 import React from 'react'
-import { useParams } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardContent } from '@/shared/components/ui/Card'
-import { Progress } from '@/shared/components/ui/Progress'
 import { AnimatedProgress } from '../components/AnimatedProgress'
 import { CountUp } from '../components/CountUp'
 import { SelectItem } from '@/shared/components/ui/Select'

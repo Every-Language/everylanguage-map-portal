@@ -1,5 +1,5 @@
 import React from 'react';
-import { Input, Select, SelectItem, Checkbox } from '../../design-system';
+import { Input, Select, SelectItem, Checkbox } from '../ui';
 import type { FormField } from './FormBuilder';
 
 export interface FieldBuilderProps {

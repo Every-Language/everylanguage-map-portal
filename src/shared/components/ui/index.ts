@@ -30,4 +30,3 @@ export * from './Alert'
 // Media Components
 export * from './FileUpload'
 export * from './Image'
-export * from './AudioPlayer' 

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, LoadingSpinner, Checkbox } from '../../design-system';
+import { Card, CardContent, CardHeader, CardTitle, LoadingSpinner, Checkbox } from '../ui';
 import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 
 export interface DataTableColumn<T = Record<string, unknown>> {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { BaseModal } from './BaseModal';
-import { Button } from '../../design-system';
+import { Button } from '../ui';
 
 export interface FormModalProps {
   open: boolean;

@@ -1,36 +1,12 @@
 import React from 'react'
 import { useAuth, authService } from '@/features/auth'
 import { Navigate } from 'react-router-dom'
-import { Form, FormActions, FormDescription, FormField, FormLabel, useFormContext } from '@/shared/components/ui/Form'
+import { Form, FormActions, FormDescription, FormField, FormLabel } from '@/shared/components/ui/Form'
 import { Input } from '@/shared/components/ui/Input'
 import { Button } from '@/shared/components/ui/Button'
 import { CustomPhoneInput } from '@/features/auth/components/CustomPhoneInput'
 import { useToast } from '@/shared/theme/hooks/useToast'
 import type { DbUser } from '@/features/auth'
-
-const FieldErrorAwareInput: React.FC<{
-  name: string
-  label: string
-  placeholder?: string
-  defaultValue?: string
-  required?: boolean
-}> = ({ name, label, placeholder, defaultValue, required }) => {
-  const { setFieldTouched, setFieldError, errors } = useFormContext()
-  return (
-    <div>
-      <FormLabel required={required}>{label}</FormLabel>
-      <Input
-        defaultValue={defaultValue}
-        placeholder={placeholder}
-        onBlur={(e) => {
-          setFieldTouched(name, true)
-          setFieldError(name, e.currentTarget.value.trim() === '' && required ? `${label} is required` : undefined)
-        }}
-        aria-invalid={!!errors[name]}
-      />
-    </div>
-  )
-}
 
 export const MyProfilePage: React.FC = () => {
   const { user, loading, updateProfile } = useAuth()

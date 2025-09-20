@@ -1,6 +1,6 @@
 import React from 'react';
 import { BaseModal } from './BaseModal';
-import { Button } from '../../design-system';
+import { Button } from '../ui';
 import { ExclamationTriangleIcon, TrashIcon, CheckIcon } from '@heroicons/react/24/outline';
 
 export interface ConfirmationModalProps {

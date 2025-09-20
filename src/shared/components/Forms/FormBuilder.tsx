@@ -2,7 +2,7 @@ import React from 'react';
 import { FieldBuilder } from './FieldBuilder';
 import { ValidationWrapper } from './ValidationWrapper';
 import { FormSection } from './FormSection';
-import { Button } from '../../design-system';
+import { Button } from '../ui';
 
 export interface FormField {
   id: string;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../design-system';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 
 export interface BaseModalProps {
