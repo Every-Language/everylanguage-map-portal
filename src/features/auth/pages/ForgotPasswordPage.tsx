@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
 import { authService } from '../services/auth';
-import { Button, Input } from '../../../shared/design-system';
+import { Button } from '@/shared/components/ui/Button';
+import { Input } from '@/shared/components/ui/Input';
 
 interface ForgotPasswordFormData {
   email: string;

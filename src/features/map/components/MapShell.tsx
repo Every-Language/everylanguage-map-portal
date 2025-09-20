@@ -2,6 +2,7 @@ import React from 'react';
 import Map, { type MapRef, NavigationControl } from 'react-map-gl/maplibre';
 import * as maplibregl from 'maplibre-gl';
 import type { Map as MLMap, ProjectionSpecification } from 'maplibre-gl';
+import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec';
 import { useTheme } from '@/shared/theme';
 import { MapProvider } from '../context/MapContext';
 import { supabase } from '@/shared/services/supabase';
@@ -75,6 +76,28 @@ export const MapShell: React.FC<MapShellProps> = ({ children, countriesEnabled =
       : 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
   }, [resolvedTheme]);
 
+  // Resolve the style JSON ahead of time and inject globe projection to avoid flat→globe flash
+  const [resolvedStyle, setResolvedStyle] = React.useState<string | StyleSpecification | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    const resolve = async () => {
+      try {
+        const res = await fetch(mapStyleUrl);
+        if (!res.ok) throw new Error(`Failed to fetch style: ${res.status}`);
+        const json = await res.json();
+        if (cancelled) return;
+        const spec: StyleSpecification = { ...json, projection: { type: 'globe' } };
+        setResolvedStyle(spec);
+      } catch {
+        // Fallback to URL if fetching the style fails
+        setResolvedStyle(mapStyleUrl);
+      }
+    };
+    setResolvedStyle(null);
+    resolve();
+    return () => { cancelled = true; };
+  }, [mapStyleUrl]);
+
   const handleMapLoad = React.useCallback(() => {
     const map = mapRef.current?.getMap() as unknown as MLMap | undefined;
     if (!map) return;
@@ -135,18 +158,20 @@ export const MapShell: React.FC<MapShellProps> = ({ children, countriesEnabled =
   return (
     <MapProvider mapRef={mapRef}>
       <div className="relative h-[100dvh] w-full">
-        <Map
-          ref={mapRef}
-          mapLib={maplibregl}
-          initialViewState={{ longitude: 0, latitude: 20, zoom: 1.5 }}
-          style={{ width: '100%', height: '100%' }}
-          mapStyle={mapStyleUrl}
-          onLoad={handleMapLoad}
-          onClick={handleMapClick}
-        >
-          <NavigationControl position="bottom-right" />
-          {children}
-        </Map>
+        {resolvedStyle && (
+          <Map
+            ref={mapRef}
+            mapLib={maplibregl}
+            initialViewState={{ longitude: 0, latitude: 20, zoom: 1.5 }}
+            style={{ width: '100%', height: '100%' }}
+            mapStyle={resolvedStyle}
+            onLoad={handleMapLoad}
+            onClick={handleMapClick}
+          >
+            <NavigationControl position="bottom-right" />
+            {children}
+          </Map>
+        )}
 
         {/* Left column is rendered from MapPage to align with inspector width */}
       </div>

@@ -1,4 +1,4 @@
-import { supabase } from '../../../shared/supabase/supabase'
+import { supabase } from '@/shared/services/supabase'
 import type { DbUser, User, Session } from '../types'
 import { normalizePhoneNumber } from '../utils/phoneValidation'
 

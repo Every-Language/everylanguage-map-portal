@@ -11,6 +11,7 @@ import { bboxOf } from '../utils/geo'
 // import { Search as SearchIcon } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { DataTable, type Column } from '@/shared/components/ui/DataTable'
+import { useNavigate } from 'react-router-dom'
 import {
   fetchRegionUsageByLanguageMV,
   fetchLanguageNames,
@@ -130,13 +131,17 @@ export const RegionView: React.FC<RegionViewProps> = ({ id }) => {
   React.useEffect(() => {
     const bbox = regionBboxQuery.data
     if (bbox) {
+      console.info('[RegionView] focusing using region bbox RPC', { regionId: id, bbox })
       fitBounds(bbox, { padding: 60, maxZoom: 7 })
       return
     }
     const boundary = regionBoundaryQuery.data
     if (!boundary) return
     const box = bboxOf(boundary as GeoJSON.Feature | GeoJSON.FeatureCollection | GeoJSON.Geometry)
-    if (box) fitBounds(box, { padding: 60, maxZoom: 7 })
+    if (box) {
+      console.info('[RegionView] focusing using region simplified boundary bbox', { regionId: id, bbox: box })
+      fitBounds(box, { padding: 60, maxZoom: 7 })
+    }
   }, [regionBboxQuery.data, regionBoundaryQuery.data, fitBounds])
 
   if (regionQuery.isLoading) return <div>Loading region…</div>
@@ -172,6 +177,8 @@ export const RegionView: React.FC<RegionViewProps> = ({ id }) => {
 
 const RegionAnalyticsTables: React.FC<{ regionId: string }> = ({ regionId }) => {
   const includeDescendants = true
+  const navigate = useNavigate()
+  const setSelection = useSetSelection()
 
   const usage = useQuery({
     queryKey: ['region-usage-mv', regionId, includeDescendants],
@@ -192,12 +199,11 @@ const RegionAnalyticsTables: React.FC<{ regionId: string }> = ({ regionId }) => 
     staleTime: 60 * 60 * 1000,
   })
 
-  type CombinedRow = { language_entity_id: string; language: string; downloads: number; listened_minutes: number; top_chapters: string }
+  type CombinedRow = { language_entity_id: string; language: string; downloads: number; listened_minutes: number }
   const combinedCols: Column<CombinedRow>[] = [
     { key: 'language', header: 'Language', sortable: true },
     { key: 'downloads', header: 'Users', sortable: true },
     { key: 'listened_minutes', header: 'Listen Time', sortable: true },
-    { key: 'top_chapters', header: 'Popular Chapters' },
   ]
 
   const combinedRowsAll: CombinedRow[] = React.useMemo(() => {
@@ -207,7 +213,6 @@ const RegionAnalyticsTables: React.FC<{ regionId: string }> = ({ regionId }) => 
       language: namesQuery.data?.[r.language_entity_id] ?? r.language_entity_id,
       downloads: Number(r.downloads_total ?? 0),
       listened_minutes: Math.round(Number(r.listened_total_seconds ?? 0) / 60),
-      top_chapters: (r.top_chapters ?? []).join(', '),
     }))
     rows.sort((a, b) => (b.downloads ?? 0) - (a.downloads ?? 0))
     return rows
@@ -224,8 +229,13 @@ const RegionAnalyticsTables: React.FC<{ regionId: string }> = ({ regionId }) => 
           data={topCombinedRows}
           columns={combinedCols}
           searchable={false}
-          loading={usage.isLoading || namesQuery.isLoading}
+          loading={usage.isLoading}
           emptyMessage="No usage data"
+          onRowClick={(row) => {
+            // Update selection immediately for snappier UX
+            setSelection({ kind: 'language_entity', id: row.language_entity_id })
+            navigate(`/map/language/${encodeURIComponent(row.language_entity_id)}`)
+          }}
         />
       </div>
     </div>

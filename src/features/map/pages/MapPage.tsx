@@ -5,7 +5,6 @@ import { LanguageHierarchy, RegionHierarchy } from '../inspector/components/MapI
 import { useSelection } from '../inspector/state/inspectorStore'
 import { MapOverlayLayers } from '../inspector/components/MapOverlayLayers'
 // import { LayerToggles } from '../components/LayerToggles';
-import { MapSearchBar } from '../components/MapSearchBar';
 import { LeftColumn } from '../components/LeftColumn';
 import { RouteSync } from '../inspector/components/RouteSync';
 import { MapAnalyticsLayers } from '../analytics/MapAnalyticsLayers'
@@ -106,7 +105,6 @@ export const MapPage: React.FC = () => {
   return (
     <MapShell countriesEnabled={layers.countries}>
       <RouteSync />
-      <MapSearchBar />
       <MapOverlayLayers countriesEnabled={layers.countries} />
       {/* Render analytics after overlay so heatmap sits on top visually */}
       <MapAnalyticsLayers show={layers.listening} />

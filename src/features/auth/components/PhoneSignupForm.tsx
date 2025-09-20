@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { useAuth } from '../hooks/useAuth';
-import { Button, Input } from '../../../shared/design-system';
+import { Button } from '@/shared/components/ui/Button';
+import { Input } from '@/shared/components/ui/Input';
 import { OtpVerificationForm } from './OtpVerificationForm';
 import { CustomPhoneInput } from './CustomPhoneInput';
 import { validatePhoneNumber } from '../utils/phoneValidation';

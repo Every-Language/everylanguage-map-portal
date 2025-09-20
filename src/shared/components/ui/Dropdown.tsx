@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Menu, Transition } from '@headlessui/react'
-import { ChevronDown, Check } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { cva } from 'class-variance-authority'
 import { cn } from '../../theme/utils'
 
@@ -21,13 +21,13 @@ const dropdownVariants = cva(
 )
 
 const dropdownTriggerVariants = cva(
-  'inline-flex w-full justify-center items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex w-full justify-center items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-neutral-100 dark:hover:bg-neutral-800 focus:outline-none disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
         default: 'border-input bg-background text-foreground',
-        ghost: 'border-transparent bg-transparent shadow-none hover:bg-accent',
-        outline: 'border-input bg-transparent text-foreground hover:bg-accent',
+        ghost: 'border-0 bg-transparent shadow-none hover:bg-neutral-100 dark:hover:bg-neutral-800',
+        outline: 'border-input bg-transparent text-foreground hover:bg-neutral-100 dark:hover:bg-neutral-800',
       },
       size: {
         sm: 'px-2 py-1 text-xs',
@@ -70,12 +70,12 @@ const dropdownContentVariants = cva(
 )
 
 const dropdownItemVariants = cva(
-  'relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+  'relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-neutral-100 dark:focus:bg-neutral-800 data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
   {
     variants: {
       variant: {
-        default: 'hover:bg-accent hover:text-accent-foreground',
-        destructive: 'text-destructive hover:bg-destructive hover:text-destructive-foreground',
+        default: 'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+        destructive: 'text-error-600 dark:text-error-400 hover:bg-error-50 dark:hover:bg-error-900/30 hover:text-error-700 dark:hover:text-error-300',
       },
       size: {
         sm: 'px-1.5 py-1 text-xs',
@@ -206,7 +206,7 @@ const DropdownItem = React.forwardRef<HTMLDivElement, DropdownItemProps>(
           ref={ref}
           className={cn(
             dropdownItemVariants({ variant, size }),
-            active && 'bg-accent text-accent-foreground',
+            (active || selected) && 'bg-neutral-100 dark:bg-neutral-800',
             itemDisabled && 'pointer-events-none opacity-50',
             className
           )}
@@ -214,9 +214,6 @@ const DropdownItem = React.forwardRef<HTMLDivElement, DropdownItemProps>(
         >
           {icon && <span className="mr-2">{icon}</span>}
           <span className="flex-1">{children}</span>
-          {selected && (
-            <Check className="ml-auto h-4 w-4" />
-          )}
         </div>
       )}
     </Menu.Item>

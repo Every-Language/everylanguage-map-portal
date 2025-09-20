@@ -67,7 +67,7 @@ export const MapAnalyticsLayers: React.FC<{ show: boolean }> = ({ show }) => {
     return (
       <>
         {listensFc.features.length > 0 && (
-          <Source id="listens-heatmap" type="geojson" data={listensFc}>
+          <Source id="listens-heatmap" key="listens-heatmap" type="geojson" data={listensFc}>
             <Layer
               id="listens-heatmap-layer"
               type="heatmap"
@@ -124,14 +124,14 @@ export const MapAnalyticsLayers: React.FC<{ show: boolean }> = ({ show }) => {
     const fc: GeoJSON.FeatureCollection<GeoJSON.Point, { language_entity_id: string; weight: number; lastAt: string | null }> = { type: 'FeatureCollection', features }
     const langIds = Array.from(new Set(rows.map(r => r.language_entity_id)))
     const palette = ['#e41a1c','#377eb8','#4daf4a','#984ea3','#ff7f00','#a65628','#f781bf','#999999','#66c2a5','#fc8d62','#8da0cb','#e78ac3']
-    if (import.meta.env.DEV) console.debug('[analytics] region', regionId, 'languages', langIds.length)
+    // if (import.meta.env.DEV) console.debug('[analytics] region', regionId, 'languages', langIds.length)
 
     return (
-      <Source id="region-listens-heatmap" type="geojson" data={fc}>
+      <Source id="region-listens-heatmap" key="region-listens-heatmap" type="geojson" data={fc}>
         {langIds.map((lid, i) => (
           <Layer
             key={lid}
-            id={`region-listens-heatmap-${i}`}
+            id={`region-listens-heatmap-${lid}`}
             type="heatmap"
             filter={['==', ['get', 'language_entity_id'], lid] as unknown as FilterSpecification}
             paint={{
@@ -146,7 +146,7 @@ export const MapAnalyticsLayers: React.FC<{ show: boolean }> = ({ show }) => {
         {langIds.map((lid, i) => (
           <Layer
             key={`region-listens-detail-${lid}`}
-            id={`region-listens-detail-${i}`}
+            id={`region-listens-detail-${lid}`}
             type="circle"
             minzoom={8}
             filter={['==', ['get', 'language_entity_id'], lid] as unknown as FilterSpecification}

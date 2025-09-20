@@ -1,1 +1,0 @@
-export { BibleTextPage } from '../../features/bible-content/pages/BibleTextPage'; 

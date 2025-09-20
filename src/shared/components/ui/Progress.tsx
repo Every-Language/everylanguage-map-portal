@@ -79,7 +79,7 @@ export const Progress: React.FC<ProgressProps> = ({
         </svg>
         {showValue && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className={cn('text-sm font-medium', colorClasses[color])}>
+            <span className={cn('text-sm font-semibold text-neutral-900 dark:text-neutral-100')}>
               {Math.round(percentage)}%
             </span>
           </div>

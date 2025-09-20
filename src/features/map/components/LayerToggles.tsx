@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type LayerKey = 'projects' | 'listening' | 'countries';
+export type LayerKey = 'listening' | 'countries' | 'projects';
 
 interface LayerTogglesProps {
   value: Record<LayerKey, boolean>;
@@ -16,7 +16,7 @@ export const LayerToggles: React.FC<LayerTogglesProps> = ({ value, onChange, cla
   const inner = (
     <div className={className ?? ''}>
       <div className="text-sm font-medium mb-2">Layers</div>
-      {(['projects','countries','listening'] as LayerKey[]).map(k => (
+      {(['countries','listening','projects'] as LayerKey[]).map(k => (
         <label key={k} className="flex items-center justify-between text-sm py-1 select-none">
           <span className="capitalize">{k}</span>
           <span className="relative inline-flex items-center">

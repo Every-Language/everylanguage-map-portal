@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Button } from '../../../shared/design-system';
+import { Button } from '@/shared/components/ui/Button';
 import { useAuth } from '../hooks/useAuth';
 
 export const UnauthorizedPage: React.FC = () => {

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { Button } from '../../../shared/design-system';
+import { Button } from '@/shared/components/ui/Button';
 
 interface OtpVerificationFormProps {
   phone: string;
