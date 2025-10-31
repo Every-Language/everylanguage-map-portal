@@ -4,7 +4,7 @@ Public, view-first interactive map for EveryLanguage analytics. The app shows la
 
 ## Stack
 - React 19 + TypeScript + Vite
-- Supabase (same project as audio app) with `@everylanguage/shared-types`
+- Supabase with `@everylanguage/shared-types`
 - TanStack Query, Zustand
 - Tailwind + existing design system
 - CI: GitHub Actions; Hosting: Vercel
@@ -29,8 +29,3 @@ npm run dev
 
 ## Scripts
 - `dev`, `build`, `preview`, `lint`, `type-check`, `test`
-
-## Next Steps
-- Integrate MapLibre GL and deck.gl layers
-- Add public read-only views for aggregated analytics (via Supabase views/functions)
-- Implement language entity filters and privacy-aware heatmaps

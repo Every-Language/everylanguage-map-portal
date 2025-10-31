@@ -2,6 +2,9 @@ import React from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Dropdown, DropdownContent, DropdownItem, DropdownTrigger } from './ui/Dropdown'
 import { SearchBar } from '@/features/search/components/SearchBar'
+import { Dialog } from '@/shared/components/ui/Dialog'
+import { Button } from '@/shared/components/ui/Button'
+import { DonateModal } from '@/features/funding/components/DonateModal/DonateModal'
 import { useAuth } from '@/features/auth'
 import { useTheme } from '@/shared/theme'
 import { ChevronDown } from 'lucide-react'
@@ -35,7 +38,7 @@ const AuthMenu: React.FC = () => {
   const navigate = useNavigate()
   if (!user) {
     return (
-      <button onClick={() => navigate('/login')} className="px-3 py-1.5 rounded-md text-sm font-medium bg-accent-600 text-white hover:bg-accent-700 transition-colors">Log in</button>
+      <Button variant="link" size="sm" onClick={() => navigate('/login')}>Log in</Button>
     )
   }
   const first = (user.user_metadata as { first_name?: string })?.first_name ?? ''
@@ -62,6 +65,7 @@ export const AppHeader: React.FC = () => {
   const searchParams = new URLSearchParams(location.search)
   const intendedSection = searchParams.get('section')
   const label = intendedSection === 'dashboard' ? 'Dashboard' : routeLabel(location.pathname)
+  const [donateOpen, setDonateOpen] = React.useState(false)
 
   return (
     <header className="sticky top-0 z-30 h-14 px-3 sm:px-4 lg:px-6 bg-white/70 dark:bg-neutral-900/70 backdrop-blur border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-3">
@@ -102,7 +106,12 @@ export const AppHeader: React.FC = () => {
       <div className="ml-auto flex items-center gap-2">
         <ThemeDropdown />
         <AuthMenu />
+        {/* Donate button to the right of the login/auth */}
+        <Button variant="primary" size="sm" onClick={() => setDonateOpen(true)}>Donate</Button>
       </div>
+      <Dialog open={donateOpen} onOpenChange={setDonateOpen}>
+        <DonateModal />
+      </Dialog>
     </header>
   )
 }
